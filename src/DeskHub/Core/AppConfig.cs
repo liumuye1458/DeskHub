@@ -31,6 +31,20 @@ public sealed class FenceLayout
     public double H { get; set; }
 }
 
+/// <summary>
+/// 一种显示器组合下的整套布局（只接笔记本屏、接外接屏扩展、复制到投影……各存一套）。
+/// Wa = 这套布局所在的主屏工作区（设备无关像素），换算到别的组合时用。
+/// </summary>
+public sealed class LayoutProfile
+{
+    public double WaX { get; set; }
+    public double WaY { get; set; }
+    public double WaW { get; set; }
+    public double WaH { get; set; }
+    public Dictionary<string, FenceLayout> Items { get; set; } = new();
+    public DateTime Used { get; set; }
+}
+
 public sealed class AppConfig
 {
     public const string OtherTopic = "其他";
@@ -64,7 +78,11 @@ public sealed class AppConfig
     public bool ShowSeconds { get; set; }
 
     public List<TopicRule> Topics { get; set; } = DefaultTopics();
+    /// <summary>当前显示器组合下的布局（就是 Layouts[LayoutSig].Items 那一份）。</summary>
     public Dictionary<string, FenceLayout> Layout { get; set; } = new();
+    /// <summary>每种显示器组合各一套布局。键见 DeskController.DisplaySig。</summary>
+    public Dictionary<string, LayoutProfile> Layouts { get; set; } = new();
+    public string LayoutSig { get; set; } = "";
     public List<CustomFence> CustomFences { get; set; } = new();
     /// <summary>快捷键：shot / search / calc → "Ctrl+Alt+A" / "Ctrl Ctrl" / ""(不设)。没写的用默认值。</summary>
     public Dictionary<string, string> Hotkeys { get; set; } = new();

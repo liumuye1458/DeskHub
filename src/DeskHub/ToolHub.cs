@@ -363,6 +363,14 @@ public sealed class ToolHub : IDisposable
     /// <summary>恢复默认布局时一起归位。</summary>
     public void DefaultPositions() { DockDefault(); CalcDefault(); foreach (var n in _notes.Values) NoteDefault(n); }
 
+    /// <summary>换了一套布局（换显示器组合）：工具条、计算器、便签按这套布局摆，没有记录的放默认位置。</summary>
+    public void Relayout()
+    {
+        if (_dock != null && !_c.RestoreWindowPos("dock", _dock)) DockDefault();
+        if (_calc != null && !_c.RestoreWindowPos("calc", _calc)) CalcDefault();
+        foreach (var (id, n) in _notes) if (!_c.RestoreWindowPos("note:" + id, n)) NoteDefault(n);
+    }
+
     /// <summary>屏幕变了（拔掉外接屏等），跑到屏幕外的挪回来。</summary>
     public void EnsureOnScreen(Func<Rect, bool> onScreen)
     {

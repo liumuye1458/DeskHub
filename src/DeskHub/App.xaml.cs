@@ -229,6 +229,17 @@ public partial class App : Application
                         report.AddRange(Windows.OfType<FenceWindow>().Select(f => $"{f.Key}: {f.CountText.Text}"));
                         report.Add("rules: " + string.Join(" | ", _ctl!.Cfg.Topics.Select(t => $"{t.Name}=[{string.Join(",", t.Learned)}]")));
                         break;
+                    case "display": // display 组合名 x,y,宽,高（模拟换显示器）/ display real
+                        if (parts[1] == "real") report.Add("display → " + _ctl!.TestDisplay(null, null));
+                        else
+                        {
+                            var n = parts[2].Split(',').Select(double.Parse).ToArray();
+                            report.Add("display → " + _ctl!.TestDisplay(parts[1], new Rect(n[0], n[1], n[2], n[3])));
+                        }
+                        break;
+                    case "rects": // 报告每个分区、时钟的位置
+                        report.AddRange(_ctl!.CaptureLayout().Select(kv => $"  {kv.Key}: {kv.Value.X:0},{kv.Value.Y:0} {kv.Value.Width:0}x{kv.Value.Height:0}"));
+                        break;
                     case "settings": OpenSettings(parts[1]); break;
                     case "winshot": // 把设置窗口画成图片
                         if (_settings is { } sw)
