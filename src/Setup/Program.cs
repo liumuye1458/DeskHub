@@ -12,8 +12,8 @@ using Microsoft.Win32;
 namespace HotaSetup;
 
 /// <summary>
-/// HOTA DESK 安装 / 卸载程序（单个 exe，主程序打包在里面）。
-/// 装在当前用户目录（%LOCALAPPDATA%\Programs\HOTA DESK），不需要管理员权限：
+/// New B Desk 安装 / 卸载程序（单个 exe，主程序打包在里面）。
+/// 装在当前用户目录（%LOCALAPPDATA%\Programs\New B Desk），不需要管理员权限：
 ///   开始菜单 + 桌面快捷方式、开机自启（可选）、“应用和功能”里能卸载。
 /// 命令行：
 ///   （无参数）                    安装界面
@@ -24,10 +24,10 @@ namespace HotaSetup;
 /// </summary>
 static class Program
 {
-    public const string Name = "HOTA DESK";
+    public const string Name = "New B Desk";
     public const string Exe = "DeskHub.exe";
     const string RunName = "DeskHub";                       // 和主程序设置里的“开机自启”是同一个
-    const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\HOTA DESK";
+    const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\New B Desk";
 
     public static readonly bool Zh = CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
     public static string T(string zh, string en) => Zh ? zh : en;
@@ -93,7 +93,9 @@ static class Program
 
     public static void Install(Options o, Action<string> step)
     {
-        if (o.Close) { step(T("正在关闭正在运行的 HOTA DESK…", "Closing running HOTA DESK…")); CloseRunning(); }
+        if (o.Close) { step(T("正在关闭正在运行的 New B Desk…", "Closing running New B Desk…")); CloseRunning(); }
+
+        if (o.Register) RemoveOldName(o.Dir);
 
         step(T("正在复制文件…", "Copying files…"));
         Directory.CreateDirectory(o.Dir);
@@ -147,10 +149,26 @@ static class Program
         step(T("安装完成", "Done"));
     }
 
+    /// <summary>
+    /// 0.6.x 以前产品叫 HOTA DESK：装过的话，把旧的快捷方式、卸载项、程序目录清掉（用户数据目录是同一个，不动）。
+    /// </summary>
+    static void RemoveOldName(string newDir)
+    {
+        const string old = "HOTA DESK";
+        var oldKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + old;
+        string? oldDir = null;
+        try { using var k = Registry.CurrentUser.OpenSubKey(oldKey); oldDir = k?.GetValue("InstallLocation") as string; } catch { }
+        foreach (var l in new[] { Environment.SpecialFolder.Programs, Environment.SpecialFolder.DesktopDirectory })
+            try { var f = Path.Combine(Environment.GetFolderPath(l), old + ".lnk"); if (File.Exists(f)) File.Delete(f); } catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(oldKey, false); } catch { }
+        if (oldDir != null && Directory.Exists(oldDir) && !string.Equals(Path.GetFullPath(oldDir).TrimEnd('\\'), Path.GetFullPath(newDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            try { Directory.Delete(oldDir, true); } catch { }
+    }
+
     // ================= 卸载 =================
     public static void Uninstall(string dir, bool deleteData, bool close, bool selfDelete, Action<string> step)
     {
-        if (close) { step(T("正在关闭 HOTA DESK…", "Closing HOTA DESK…")); CloseRunning(); }
+        if (close) { step(T("正在关闭 New B Desk…", "Closing New B Desk…")); CloseRunning(); }
         step(T("正在删除快捷方式和注册信息…", "Removing shortcuts…"));
         foreach (var l in new[] { StartMenuLnk, DesktopLnk }) try { if (File.Exists(l)) File.Delete(l); } catch { }
         try
@@ -272,7 +290,7 @@ sealed class InstallWindow : Window
     public InstallWindow()
     {
         var old = Program.Installed();
-        Program.Style(this, Program.T("安装 HOTA DESK", "Install HOTA DESK"));
+        Program.Style(this, Program.T("安装 New B Desk", "Install New B Desk"));
         _dir.Text = old?.Dir ?? Program.DefaultDir;
         _desk.Content = Program.T("创建桌面快捷方式", "Create desktop shortcut");
         _auto.Content = Program.T("开机自动启动", "Start with Windows");
@@ -310,7 +328,7 @@ sealed class InstallWindow : Window
             {
                 await Task.Run(() => Program.Install(o, s => Dispatcher.Invoke(() => _status.Text = s)));
                 _bar.Visibility = Visibility.Collapsed;
-                _status.Text = Program.T("安装完成。开始菜单和桌面上都有 HOTA DESK。", "Installed. HOTA DESK is in the Start menu.");
+                _status.Text = Program.T("安装完成。开始菜单和桌面上都有 New B Desk。", "Installed. New B Desk is in the Start menu.");
                 _status.Foreground = Program.Green;
                 _ok.Content = Program.T("完成", "Finish"); _ok.IsEnabled = true; _done = true;
             }
@@ -340,7 +358,7 @@ sealed class UninstallWindow : Window
 {
     public UninstallWindow(string dir)
     {
-        Program.Style(this, Program.T("卸载 HOTA DESK", "Uninstall HOTA DESK"));
+        Program.Style(this, Program.T("卸载 New B Desk", "Uninstall New B Desk"));
         var data = new CheckBox
         {
             Content = Program.T("同时删除我的数据（设置、备忘录、密码箱等，删除后无法恢复）", "Also delete my data (settings, memos, password vault — cannot be undone)"),
@@ -364,7 +382,7 @@ sealed class UninstallWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
         buttons.Children.Add(cancel); buttons.Children.Add(ok);
         var root = new StackPanel { Margin = new Thickness(28, 24, 28, 22) };
-        root.Children.Add(Program.Header(Program.T("要把 HOTA DESK 从这台电脑上卸载吗？桌面上的文件不会被动。", "Remove HOTA DESK from this PC? Files on your desktop are not touched.")));
+        root.Children.Add(Program.Header(Program.T("要把 New B Desk 从这台电脑上卸载吗？桌面上的文件不会被动。", "Remove New B Desk from this PC? Files on your desktop are not touched.")));
         root.Children.Add(data);
         root.Children.Add(status);
         root.Children.Add(buttons);

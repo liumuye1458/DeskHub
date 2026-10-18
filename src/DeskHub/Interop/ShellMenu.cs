@@ -73,30 +73,46 @@ static class ShellMenu
     /// <summary>自己的菜单项：文字、是否勾选、是否可用、点击后的动作。null 表示分隔线。</summary>
     public sealed record Own(string Text, Action? Run, bool Checked = false, bool Enabled = true, List<Own>? Sub = null);
 
-    /// <summary>弹出菜单。返回 true 表示执行了某个系统命令（例如删除、重命名），调用方可刷新。</summary>
-    public static bool Show(Window owner, string path, IList<Own?> own)
+    [DllImport("shell32.dll")] static extern IntPtr ILFindLastID(IntPtr pidl);
+
+    /// <summary>
+    /// 弹出菜单。paths 可以是好几个（必须在同一个文件夹里），原生菜单的命令就对这一批生效；
+    /// paths 为空时只显示本工具自己的菜单项。返回 true 表示执行了某个系统命令（例如删除、重命名），调用方可刷新。
+    /// </summary>
+    public static bool Show(Window owner, IList<string> paths, IList<Own?> own)
     {
         var hwnd = new WindowInteropHelper(owner).Handle;
-        IntPtr pidl = IntPtr.Zero, parentPtr = IntPtr.Zero, cmPtr = IntPtr.Zero, menu = IntPtr.Zero;
+        IntPtr parentPtr = IntPtr.Zero, cmPtr = IntPtr.Zero, menu = IntPtr.Zero;
+        var pidls = new List<IntPtr>();
         IShellFolder? parent = null; IContextMenu? cm = null;
         var actions = new Dictionary<uint, Action>();
         HwndSource? src = HwndSource.FromHwnd(hwnd);
         try
         {
-            if (Native.SHParseDisplayName(path, IntPtr.Zero, out pidl, 0, out _) != 0) return false;
-            if (Native.SHBindToParent(pidl, typeof(IShellFolder).GUID, out parentPtr, out var child) != 0) return false;
-            parent = (IShellFolder)Marshal.GetObjectForIUnknown(parentPtr);
-            parent.GetUIObjectOf(hwnd, 1, new[] { child }, typeof(IContextMenu).GUID, IntPtr.Zero, out cmPtr);
-            cm = (IContextMenu)Marshal.GetObjectForIUnknown(cmPtr);
-            _cm2 = cm as IContextMenu2; _cm3 = cm as IContextMenu3;
+            foreach (var path in paths)
+            {
+                if (Native.SHParseDisplayName(path, IntPtr.Zero, out var p, 0, out _) != 0) return false;
+                pidls.Add(p);
+            }
+            if (pidls.Count > 0)
+            {
+                if (Native.SHBindToParent(pidls[0], typeof(IShellFolder).GUID, out parentPtr, out _) != 0) return false;
+                parent = (IShellFolder)Marshal.GetObjectForIUnknown(parentPtr);
+                var children = pidls.Select(ILFindLastID).ToArray();
+                parent.GetUIObjectOf(hwnd, (uint)children.Length, children, typeof(IContextMenu).GUID, IntPtr.Zero, out cmPtr);
+                cm = (IContextMenu)Marshal.GetObjectForIUnknown(cmPtr);
+                _cm2 = cm as IContextMenu2; _cm3 = cm as IContextMenu3;
+            }
 
             menu = Native.CreatePopupMenu();
             uint pos = 0, id = OwnFirst;
             foreach (var o in own) AddOwn(menu, ref pos, ref id, o, actions);
-            Native.InsertMenu(menu, pos++, Native.MF_BYPOSITION | Native.MF_SEPARATOR, UIntPtr.Zero, null);
-
-            bool shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
-            cm.QueryContextMenu(menu, pos, ShellFirst, ShellLast, CMF_NORMAL | CMF_EXPLORE | (shift ? CMF_EXTENDEDVERBS : 0));
+            if (cm != null)
+            {
+                Native.InsertMenu(menu, pos++, Native.MF_BYPOSITION | Native.MF_SEPARATOR, UIntPtr.Zero, null);
+                bool shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
+                cm.QueryContextMenu(menu, pos, ShellFirst, ShellLast, CMF_NORMAL | CMF_EXPLORE | (shift ? CMF_EXTENDEDVERBS : 0));
+            }
 
             src?.AddHook(MenuHook);
             Native.GetCursorPos(out var pt);
@@ -104,7 +120,7 @@ static class ShellMenu
             src?.RemoveHook(MenuHook);
             if (cmd == 0) return false;
 
-            if (cmd >= OwnFirst)
+            if (cmd >= OwnFirst || cm == null)
             {
                 if (actions.TryGetValue(cmd, out var a)) a();
                 return false;
@@ -131,7 +147,7 @@ static class ShellMenu
             if (parent != null) Marshal.ReleaseComObject(parent);
             if (cmPtr != IntPtr.Zero) Marshal.Release(cmPtr);
             if (parentPtr != IntPtr.Zero) Marshal.Release(parentPtr);
-            if (pidl != IntPtr.Zero) Native.CoTaskMemFree(pidl);
+            foreach (var p in pidls) Native.CoTaskMemFree(p);
         }
     }
 

@@ -433,6 +433,86 @@ public sealed class DeskController : IFenceHost
         return $"sig={Cfg.LayoutSig} 共 {Cfg.Layouts.Count} 套";
     }
 
+    // ================= 布局：保存 / 切换 / 导出 / 导入 =================
+    public const string AutoBackupName = "（自动）换布局之前的样子";
+
+    /// <summary>把现在屏幕上的摆法记成一套（分区、时钟实时读窗口位置；工具条等小窗口用已存的位置）。</summary>
+    public SavedLayout CaptureSaved(string name)
+    {
+        var items = Cfg.Layout.ToDictionary(kv => kv.Key, kv => new FenceLayout { X = kv.Value.X, Y = kv.Value.Y, W = kv.Value.W, H = kv.Value.H });
+        foreach (var (k, f) in _fences) items[k] = new FenceLayout { X = f.Left, Y = f.Top, W = f.Width, H = f.Height };
+        if (_clock != null) items["clock"] = new FenceLayout { X = _clock.Left, Y = _clock.Top };
+        return new SavedLayout
+        {
+            Name = name, Saved = DateTime.Now, Profile = NewProfile(items),
+            Fences = Cfg.CustomFences.Select(c => new CustomFence { Id = c.Id, Title = c.Title }).ToList(),
+        };
+    }
+
+    /// <summary>保存当前布局（同名的覆盖）。</summary>
+    public void SaveCurrentLayout(string name)
+    {
+        var s = CaptureSaved(name);
+        Cfg.SavedLayouts.RemoveAll(x => x.Name == name);
+        Cfg.SavedLayouts.Insert(0, s);
+        Cfg.Save();
+    }
+
+    /// <summary>
+    /// 换成一套存起来的布局：屏幕大小不一样时按比例换算；里面有、现在没有的自定义分区会建出来（同名的直接用现有的）。
+    /// 换之前自动把现在的样子存成“换布局之前的样子”，换错了能切回来。
+    /// </summary>
+    public void ApplySaved(SavedLayout s)
+    {
+        var before = CaptureSaved(AutoBackupName);
+        var map = new Dictionary<string, string>();
+        foreach (var cf in s.Fences)
+        {
+            if (Cfg.CustomFences.Any(c => c.Id == cf.Id)) continue;
+            var same = Cfg.CustomFences.FirstOrDefault(c => c.Title == cf.Title);
+            if (same != null) { map[cf.Id] = same.Id; continue; }
+            var nf = new CustomFence { Id = cf.Id, Title = cf.Title };
+            Cfg.CustomFences.Add(nf);
+            MakeCustom(nf);
+            _fences[nf.Id].Show();
+        }
+        var derived = Derive(s.Profile);
+        foreach (var (k, l) in derived.Items) Cfg.Layout[map.TryGetValue(k, out var k2) ? k2 : k] = l;
+        ApplyProfile();
+        EnsureOnScreen();
+        if (s.Name != before.Name)
+        {
+            Cfg.SavedLayouts.RemoveAll(x => x.Name == before.Name);
+            Cfg.SavedLayouts.Add(before);
+        }
+        Cfg.Save();
+        Refresh();
+    }
+
+    sealed class LayoutFile
+    {
+        public string App { get; set; } = "New B Desk";
+        public string Kind { get; set; } = "layout";
+        public int Version { get; set; } = 1;
+        public SavedLayout Layout { get; set; } = new();
+    }
+
+    public void ExportLayout(SavedLayout s, string path) =>
+        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new LayoutFile { Layout = s }, AppConfig.Json));
+
+    /// <summary>导入布局文件：加进“已保存的布局”（同名覆盖），并马上换上。</summary>
+    public SavedLayout ImportLayout(string path)
+    {
+        var f = System.Text.Json.JsonSerializer.Deserialize<LayoutFile>(File.ReadAllText(path), AppConfig.Json);
+        if (f?.Kind != "layout" || f.Layout.Profile.Items.Count == 0) throw new InvalidDataException(L.T("这不是布局文件"));
+        var s = f.Layout;
+        if (string.IsNullOrWhiteSpace(s.Name)) s.Name = Path.GetFileNameWithoutExtension(path);
+        Cfg.SavedLayouts.RemoveAll(x => x.Name == s.Name);
+        Cfg.SavedLayouts.Insert(0, s);
+        ApplySaved(s);
+        return s;
+    }
+
     public void ResetLayout()
     {
         Cfg.Layout.Clear();
@@ -565,6 +645,8 @@ public sealed class DeskController : IFenceHost
     }
 
     public ToolHub? Tools { get; set; }
+    /// <summary>打开“布局”窗口。</summary>
+    public event Action? RequestLayouts;
     public event Action<string>? RequestPage;
     public void OpenSettings(string page) => RequestPage?.Invoke(page);
 
@@ -658,21 +740,55 @@ public sealed class DeskController : IFenceHost
         Refresh();
     }
 
-    public void DeleteItem(DesktopItem item)
+    public void DeleteItem(DesktopItem item) => DeleteItems(new[] { item });
+
+    /// <summary>删除（可以一次好几个）：和资源管理器一样放进回收站，可以还原。系统图标不能删。</summary>
+    public void DeleteItems(IReadOnlyList<DesktopItem> items)
     {
-        if (item.IsSystem) return; // 系统图标不能删
-        try
+        foreach (var item in items.Where(i => !i.IsSystem))
         {
-            // 和资源管理器一样：放进回收站，可以还原
-            if (item.IsDir) VbFs.DeleteDirectory(item.Path, VbUi.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            else VbFs.DeleteFile(item.Path, VbUi.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            try
+            {
+                if (item.IsDir) VbFs.DeleteDirectory(item.Path, VbUi.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                else VbFs.DeleteFile(item.Path, VbUi.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Notify?.Invoke(L.T("删除失败：") + ex.Message); }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { Notify?.Invoke(L.T("删除失败：") + ex.Message); }
         Refresh();
     }
 
-    public void ShowItemMenu(FenceWindow fence, DesktopItem item)
+    public void SelectionStarted(FenceWindow fence)
+    {
+        foreach (var f in _fences.Values) if (f != fence) f.ClearSelection();
+    }
+
+    public void ShowItemMenu(FenceWindow fence, IReadOnlyList<DesktopItem> items)
+    {
+        if (items.Count == 0) return;
+        if (items.Count == 1) { ShowItemMenu(fence, items[0]); return; }
+        // 好几个：Windows 原生菜单（复制、剪切、删除、压缩、发送到……都是对这一批），前面加本工具的
+        var files = items.Where(i => !i.IsSystem).ToList();
+        var own = new List<ShellMenu.Own?>();
+        var flowing = files.Where(i => !i.IsDir && !i.IsShortcut).ToList();
+        if (flowing.Count == files.Count && files.Count > 0)
+        {
+            var subs = Cfg.Topics.Select(t => t.Name).Append(AppConfig.OtherTopic)
+                .Select(n => (ShellMenu.Own?)new ShellMenu.Own(n, () => { foreach (var it in flowing) State.Get(it.Path, DateTime.Now).Topic = n; Refresh(); })).ToList();
+            own.Add(new ShellMenu.Own(L.F("归到事项（{0} 个）", flowing.Count), null, Sub: subs!));
+        }
+        // 原生菜单要求在同一个文件夹里；桌面上的东西有的在“公用桌面”，混在一起时只给本工具的菜单
+        bool oneDir = files.Select(i => Path.GetDirectoryName(i.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1;
+        if (!oneDir && files.Count > 0)
+        {
+            own.Add(new ShellMenu.Own(L.F("删除（{0} 个，放进回收站）", files.Count), () => DeleteItems(files)));
+            own.Add(new ShellMenu.Own(L.T("打开所在位置"), () => ShellMenu.Reveal(files[0].Path)));
+        }
+        if (own.Count == 0 && (!oneDir || files.Count == 0)) return;
+        if (ShellMenu.Show(fence, oneDir ? files.Select(i => i.Path).ToList() : new List<string>(), own)) _ui.BeginInvoke(DispatcherPriority.Background, Refresh);
+    }
+
+    void ShowItemMenu(FenceWindow fence, DesktopItem item)
     {
         var meta = State.Get(item.Path, DateTime.Now);
         var own = new List<ShellMenu.Own?>();
@@ -690,7 +806,7 @@ public sealed class DeskController : IFenceHost
             own.Add(new ShellMenu.Own(item.Pinned ? L.T("取消钉住") : L.T("钉住（留在进行中，不归档）"), () => { meta.Pinned = !meta.Pinned; meta.Placed = null; Refresh(); }));
             if (!item.IsPublic) own.Add(new ShellMenu.Own(L.T("立即归档"), () => ArchiveNow(item)));
         }
-        if (ShellMenu.Show(fence, item.Path, own)) _ui.BeginInvoke(DispatcherPriority.Background, Refresh);
+        if (ShellMenu.Show(fence, new List<string> { item.Path }, own)) _ui.BeginInvoke(DispatcherPriority.Background, Refresh);
     }
 
     public void ShowFenceMenu(FenceWindow fence)
@@ -710,6 +826,7 @@ public sealed class DeskController : IFenceHost
         m.Items.Add(new System.Windows.Controls.Separator());
         Add(L.T("排列：对齐现在的摆法"), () => Tools?.Arrange(1));
         Add(L.T("排列：按推荐方案重排"), () => Tools?.Arrange(2));
+        Add(L.T("布局：保存 / 切换 / 导出 / 导入…"), () => RequestLayouts?.Invoke());
         Add(L.T("恢复默认布局"), ResetLayout);
         Add(L.T("刷新"), Refresh);
         m.PlacementTarget = fence.MenuBtn;
@@ -729,7 +846,7 @@ public sealed class DeskController : IFenceHost
             State.Rename(item.Path, dest);
             ShellIcons.Forget(item.Path);
         }
-        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, "HOTA DESK"); }
+        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, "New B Desk"); }
         Refresh();
     }
 
@@ -762,6 +879,22 @@ public sealed class DeskController : IFenceHost
         if (item.IsSystem) return; // 系统图标固定在常用软件里
         if (fence.Zone != item.Zone || item.Zone == Zone.Custom) Place(item.Path, fence.Zone, item.IsDir || item.IsShortcut);
         if (fence.Zone == Zone.Active && topic != null && topic != item.Topic) { MoveToTopic(item, topic, fence); return; }
+        Refresh();
+    }
+
+    /// <summary>一次拖好几个到别的分区（或“进行中”的事项标签上）：一起放过去，最后刷新一次。</summary>
+    public void PlaceItems(IReadOnlyList<DesktopItem> items, FenceWindow fence, string? topic, bool sameFence)
+    {
+        foreach (var item in items)
+        {
+            if (!sameFence)
+            {
+                if (fence.Zone == Zone.Custom) PutInFence(item.Path, fence.Key);
+                else if (!item.IsSystem && (fence.Zone != item.Zone || item.Zone == Zone.Custom)) Place(item.Path, fence.Zone, item.IsDir || item.IsShortcut);
+            }
+            if (fence.Zone == Zone.Active && topic != null && !item.IsDir && !item.IsShortcut && !item.IsSystem)
+                State.Get(item.Path, DateTime.Now).Topic = topic;
+        }
         Refresh();
     }
 

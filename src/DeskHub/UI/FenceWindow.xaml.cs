@@ -13,14 +13,18 @@ namespace DeskHub.UI;
 public interface IFenceHost
 {
     void OpenItem(DesktopItem item);
-    void ShowItemMenu(FenceWindow fence, DesktopItem item);
+    void ShowItemMenu(FenceWindow fence, IReadOnlyList<DesktopItem> items);
     void ShowFenceMenu(FenceWindow fence);
     void MoveToTopic(DesktopItem item, string topic, FenceWindow fence);
     void PlaceItem(DesktopItem item, FenceWindow fence, string? topic);
+    /// <summary>一次拖了好几个过来：一起换分区（换事项时不弹“记住规则”）。</summary>
+    void PlaceItems(IReadOnlyList<DesktopItem> items, FenceWindow fence, string? topic, bool sameFence);
     void DropFiles(string[] paths, FenceWindow fence, string? topic, bool forceCopy, bool forceMove);
     void LayoutChanged(FenceWindow fence);
     void FooterClicked();
-    void DeleteItem(DesktopItem item);
+    void DeleteItems(IReadOnlyList<DesktopItem> items);
+    /// <summary>这个分区里开始选东西了：别的分区的选中清掉（和桌面一样，同一时间只有一处有选中）。</summary>
+    void SelectionStarted(FenceWindow fence);
     Rect SnapRect(FenceWindow fence, Rect r, bool resize);
 }
 
@@ -36,7 +40,7 @@ public partial class FenceWindow : Window
     readonly IFenceHost _host;
     readonly ObservableCollection<ItemVM> _items = new();
     List<DesktopItem> _all = new();
-    ItemVM? _selected;
+    ItemVM? _anchor; // Shift 连选的起点
 
     public string CurrentTab { get; private set; } = AllTab;
     string _chip = L.T("全部");
@@ -74,11 +78,12 @@ public partial class FenceWindow : Window
         Grip.DragCompleted += (_, _) => _host.LayoutChanged(this);
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
 
-        Items.PreviewMouseLeftButtonDown += OnItemDown;
-        Items.PreviewMouseMove += OnItemMove;
-        Items.MouseLeftButtonUp += (_, _) => _dragStart = null;
-        Items.PreviewMouseRightButtonUp += OnItemRight;
-        Scroll.MouseLeftButtonDown += (_, _) => Select(null);
+        // 点选 / Ctrl、Shift 多选 / 空白处拖框多选 / 拖走选中的
+        Scroll.PreviewMouseLeftButtonDown += OnDown;
+        Scroll.PreviewMouseMove += OnMove;
+        Scroll.PreviewMouseLeftButtonUp += OnUp;
+        Scroll.LostMouseCapture += (_, _) => EndBand();
+        Scroll.PreviewMouseRightButtonUp += OnItemRight;
         KeyDown += OnKey;
 
         Tabs.PreviewMouseLeftButtonUp += (_, e) =>
@@ -134,7 +139,8 @@ public partial class FenceWindow : Window
 
     void Render()
     {
-        var sel = _selected?.Item.Path;
+        var sel = _items.Where(v => v.Selected).Select(v => v.Item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var anchor = _anchor?.Item.Path;
         IEnumerable<DesktopItem> view = _all;
 
         if (ShowTabs)
@@ -171,11 +177,12 @@ public partial class FenceWindow : Window
         var list = Sort(view).ToList();
         CountText.Text = _all.Count.ToString();
         _items.Clear();
-        _selected = null;
+        _anchor = null;
         foreach (var it in list)
         {
             var vm = new ItemVM(it, ShowNewDot, ShowDaysBadge);
-            if (it.Path == sel) { vm.Selected = true; _selected = vm; }
+            if (sel.Contains(it.Path)) vm.Selected = true;
+            if (it.Path == anchor) _anchor = vm;
             _items.Add(vm);
             LoadIcon(vm);
         }
@@ -191,58 +198,184 @@ public partial class FenceWindow : Window
     }
 
     // ---------------- 选择 / 打开 / 右键 ----------------
+    // 和资源管理器一样：单击选一个；Ctrl+单击加选/取消；Shift+单击连选；空白处按住拖出框来框选（按住 Ctrl 是加选）；
+    // Ctrl+A 全选；选中好几个以后拖动、删除、右键都是对这一批。
     Point? _dragStart;
-    ItemVM? _downItem;
+    ItemVM? _downItem, _pendingOnly;
+    Point? _bandFrom;
+    HashSet<ItemVM> _bandBase = new();
 
-    void OnItemDown(object sender, MouseButtonEventArgs e)
+    /// <summary>现在选中的（按显示顺序）。</summary>
+    public IReadOnlyList<DesktopItem> SelectedItems => _items.Where(v => v.Selected).Select(v => v.Item).ToList();
+
+    public void ClearSelection()
     {
-        var vm = Hit<ItemVM>(e.OriginalSource);
-        if (vm == null) return;
-        Select(vm);
+        foreach (var v in _items) if (v.Selected) v.Selected = false;
+        _anchor = null;
+    }
+
+    void SelectOnly(ItemVM? vm)
+    {
+        foreach (var v in _items) if (v.Selected && v != vm) v.Selected = false;
+        if (vm != null) vm.Selected = true;
+        _anchor = vm;
+    }
+
+    void SelectRange(ItemVM from, ItemVM to, bool add)
+    {
+        int a = _items.IndexOf(from), b = _items.IndexOf(to);
+        if (a < 0) a = b;
+        if (a > b) (a, b) = (b, a);
+        for (int i = 0; i < _items.Count; i++)
+        {
+            bool inRange = i >= a && i <= b;
+            if (inRange) _items[i].Selected = true;
+            else if (!add && _items[i].Selected) _items[i].Selected = false;
+        }
+    }
+
+    void OnDown(object sender, MouseButtonEventArgs e)
+    {
+        if (Hit<ScrollBar>(e.OriginalSource) != null) return; // 点的是滚动条
         Activate();
         Focus();
-        if (e.ClickCount == 2) { _dragStart = null; _host.OpenItem(vm.Item); e.Handled = true; return; }
+        _host.SelectionStarted(this);
+        var mods = Keyboard.Modifiers;
+        bool ctrl = (mods & ModifierKeys.Control) != 0, shift = (mods & ModifierKeys.Shift) != 0;
+        var vm = Hit<ItemVM>(e.OriginalSource);
+        e.Handled = true;
+
+        if (vm == null)
+        {
+            // 空白处：开始拖框（不按 Ctrl 先清掉原来的选中）
+            if (!ctrl) ClearSelection();
+            _bandFrom = e.GetPosition(Items);
+            _bandBase = _items.Where(v => v.Selected).ToHashSet();
+            Scroll.CaptureMouse();
+            return;
+        }
+        if (e.ClickCount == 2 && !ctrl && !shift) { _dragStart = null; _host.OpenItem(vm.Item); return; }
+
+        ClickItem(vm, ctrl, shift);
+        if (!vm.Selected) return;
         _dragStart = e.GetPosition(this);
         _downItem = vm;
     }
 
-    void OnItemMove(object sender, MouseEventArgs e)
+    /// <summary>按下鼠标时的选择规则。</summary>
+    void ClickItem(ItemVM vm, bool ctrl, bool shift)
     {
+        _pendingOnly = null;
+        if (shift) SelectRange(_anchor ?? vm, vm, add: ctrl);
+        else if (ctrl) { vm.Selected = !vm.Selected; _anchor = vm; }
+        else if (!vm.Selected) SelectOnly(vm);
+        else _pendingOnly = vm; // 点在已选中的上面：可能要拖走这一批，松手时没拖才改成只选它
+    }
+
+    // 测试用：模拟点击 / 松手 / 拖框（坐标是图标区里的位置）
+    public void TestClick(int index, bool ctrl, bool shift) { _host.SelectionStarted(this); ClickItem(_items[index], ctrl, shift); _dragStart = new Point(); OnUp(this, null!); }
+    public void TestBand(Rect r, bool ctrl)
+    {
+        _host.SelectionStarted(this);
+        if (!ctrl) ClearSelection();
+        _bandBase = _items.Where(v => v.Selected).ToHashSet();
+        _bandFrom = r.TopLeft;
+        UpdateBand(r.TopLeft, r.BottomRight);
+    }
+    public void TestEndBand() => EndBand();
+    public void TestDragTo(FenceWindow target) => _host.PlaceItems(SelectedItems, target, null, target == this);
+
+    void OnMove(object sender, MouseEventArgs e)
+    {
+        if (_bandFrom is { } from)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) { EndBand(); return; }
+            UpdateBand(from, e.GetPosition(Items));
+            AutoScroll(e.GetPosition(Scroll).Y);
+            return;
+        }
         if (_dragStart is not { } p0 || _downItem == null || e.LeftButton != MouseButtonState.Pressed) return;
         var p = e.GetPosition(this);
         if (Math.Abs(p.X - p0.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y - p0.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        _dragStart = null;
-        var path = _downItem.Item.Path;
+        _dragStart = null; _pendingOnly = null;
+        var items = SelectedItems;
+        if (items.Count == 0) return;
         // 同时带上"文件"格式：可以直接拖进微信、企业微信、浏览器上传框、资源管理器
         var data = new DataObject();
-        if (!_downItem.Item.IsSystem) data.SetFileDropList(new System.Collections.Specialized.StringCollection { path });
-        data.SetData(InternalFormat, path);
+        var files = new System.Collections.Specialized.StringCollection();
+        foreach (var it in items) if (!it.IsSystem) files.Add(it.Path);
+        if (files.Count > 0) data.SetFileDropList(files);
+        data.SetData(InternalFormat, string.Join("\n", items.Select(i => i.Path)));
         data.SetData(FromFormat, Key);
         DragDrop.DoDragDrop(Items, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+    }
+
+    void OnUp(object sender, MouseButtonEventArgs? e)
+    {
+        if (_bandFrom != null) { EndBand(); if (e != null) e.Handled = true; return; }
+        if (_pendingOnly != null && _dragStart != null) SelectOnly(_pendingOnly);
+        _pendingOnly = null;
+        _dragStart = null;
+    }
+
+    void UpdateBand(Point a, Point b)
+    {
+        var r = new Rect(a, b);
+        Band.Visibility = r.Width + r.Height > 3 ? Visibility.Visible : Visibility.Collapsed;
+        Canvas.SetLeft(Band, r.X); Canvas.SetTop(Band, r.Y);
+        Band.Width = r.Width; Band.Height = r.Height;
+        foreach (var v in _items)
+        {
+            if (Items.ItemContainerGenerator.ContainerFromItem(v) is not FrameworkElement c || !c.IsVisible) continue;
+            var box = c.TransformToAncestor(Items).TransformBounds(new Rect(c.RenderSize));
+            box.Inflate(-6, -6); // 碰到图标格子的边缘不算，要框进去一点
+            bool hit = r.IntersectsWith(box);
+            bool want = hit || _bandBase.Contains(v);
+            if (v.Selected != want) v.Selected = want;
+        }
+    }
+
+    /// <summary>拖框拖到分区上下边外面：自动滚动。</summary>
+    void AutoScroll(double y)
+    {
+        if (y < 0) Scroll.ScrollToVerticalOffset(Scroll.VerticalOffset + Math.Max(-30, y / 2));
+        else if (y > Scroll.ActualHeight) Scroll.ScrollToVerticalOffset(Scroll.VerticalOffset + Math.Min(30, (y - Scroll.ActualHeight) / 2));
+    }
+
+    void EndBand()
+    {
+        if (_bandFrom == null) return;
+        _bandFrom = null;
+        Band.Visibility = Visibility.Collapsed;
+        _anchor = _items.FirstOrDefault(v => v.Selected);
+        if (Scroll.IsMouseCaptured) Scroll.ReleaseMouseCapture();
     }
 
     void OnItemRight(object sender, MouseButtonEventArgs e)
     {
         var vm = Hit<ItemVM>(e.OriginalSource);
         if (vm == null) return;
-        Select(vm);
-        _host.ShowItemMenu(this, vm.Item);
+        _host.SelectionStarted(this);
+        if (!vm.Selected) SelectOnly(vm); // 右键没选中的：只选它；右键选中的：对整批
+        _host.ShowItemMenu(this, SelectedItems);
         e.Handled = true;
     }
 
     void OnKey(object sender, KeyEventArgs e)
     {
-        if (_selected == null) return;
-        if (e.Key == System.Windows.Input.Key.Enter) _host.OpenItem(_selected.Item);
-        else if (e.Key == System.Windows.Input.Key.Delete) _host.DeleteItem(_selected.Item);
-        else if (e.Key == System.Windows.Input.Key.Apps) _host.ShowItemMenu(this, _selected.Item);
-    }
-
-    void Select(ItemVM? vm)
-    {
-        if (_selected != null) _selected.Selected = false;
-        _selected = vm;
-        if (vm != null) vm.Selected = true;
+        if (e.Key == System.Windows.Input.Key.A && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            _host.SelectionStarted(this);
+            foreach (var v in _items) v.Selected = true;
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == System.Windows.Input.Key.Escape) { ClearSelection(); return; }
+        var sel = SelectedItems;
+        if (sel.Count == 0) return;
+        if (e.Key == System.Windows.Input.Key.Enter) { foreach (var it in sel.Take(20)) _host.OpenItem(it); }
+        else if (e.Key == System.Windows.Input.Key.Delete) _host.DeleteItems(sel);
+        else if (e.Key == System.Windows.Input.Key.Apps) _host.ShowItemMenu(this, sel);
     }
 
     // ---------------- 拖进来 ----------------
@@ -286,12 +419,14 @@ public partial class FenceWindow : Window
     void OnDrop(object sender, DragEventArgs e)
     {
         var topic = DropTopic(e);
-        if (e.Data.GetData(InternalFormat) is string path)
+        if (e.Data.GetData(InternalFormat) is string joined)
         {
-            var item = _all.FirstOrDefault(i => i.Path == path) ?? (_host as DeskController)?.Find(path);
-            if (item == null) return;
-            if (e.Data.GetData(FromFormat) as string != Key) _host.PlaceItem(item, this, topic);
-            else if (topic != null) _host.MoveToTopic(item, topic, this);
+            var items = joined.Split('\n').Select(p => _all.FirstOrDefault(i => i.Path == p) ?? (_host as DeskController)?.Find(p)).OfType<DesktopItem>().ToList();
+            if (items.Count == 0) return;
+            bool same = e.Data.GetData(FromFormat) as string == Key;
+            if (items.Count > 1) { if (!same || topic != null) _host.PlaceItems(items, this, topic, same); return; }
+            if (!same) _host.PlaceItem(items[0], this, topic);
+            else if (topic != null) _host.MoveToTopic(items[0], topic, this);
             return;
         }
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)

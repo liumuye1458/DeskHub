@@ -340,7 +340,7 @@ public sealed class GuideWindow : Window
         var del = new MenuItem { Header = L.T("删除这张便签") };
         del.Click += (_, _) =>
         {
-            if (MessageBox.Show(L.T("删除这张便签？"), "HOTA DESK", MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
+            if (MessageBox.Show(L.T("删除这张便签？"), "New B Desk", MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
             GuideStore.D.Notes.Remove(n); GuideStore.Save();
         };
         m.Items.Add(del);

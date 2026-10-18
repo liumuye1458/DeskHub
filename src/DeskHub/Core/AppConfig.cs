@@ -45,6 +45,15 @@ public sealed class LayoutProfile
     public DateTime Used { get; set; }
 }
 
+/// <summary>存起来的一套布局（分区、时钟、工具条的位置 + 当时有哪些自定义分区），可以随时切回去，也能导出成文件。</summary>
+public sealed class SavedLayout
+{
+    public string Name { get; set; } = "";
+    public DateTime Saved { get; set; } = DateTime.Now;
+    public LayoutProfile Profile { get; set; } = new();
+    public List<CustomFence> Fences { get; set; } = new();
+}
+
 public sealed class AppConfig
 {
     public const string OtherTopic = "其他";
@@ -86,6 +95,8 @@ public sealed class AppConfig
     public Dictionary<string, LayoutProfile> Layouts { get; set; } = new();
     public string LayoutSig { get; set; } = "";
     public List<CustomFence> CustomFences { get; set; } = new();
+    /// <summary>用户存起来的布局（布局 → 保存当前布局）。</summary>
+    public List<SavedLayout> SavedLayouts { get; set; } = new();
     /// <summary>快捷键：shot / search / calc → "Ctrl+Alt+A" / "Ctrl Ctrl" / ""(不设)。没写的用默认值。</summary>
     public Dictionary<string, string> Hotkeys { get; set; } = new();
 

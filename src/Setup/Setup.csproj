@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    HOTA DESK 安装包。一条命令出安装包：
+    New B Desk 安装包。一条命令出安装包：
       dotnet publish src/Setup -c Release -o 发布
-    会先发布主程序、打成压缩包嵌进来，再生成单个文件 HOTA_DESK_Setup_版本号.exe。
+    会先发布主程序、打成压缩包嵌进来，再生成单个文件 New_B_Desk_Setup_版本号.exe。
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -16,12 +16,12 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
-    <AssemblyName>HOTA_DESK_Setup_$(Version)</AssemblyName>
+    <AssemblyName>New_B_Desk_Setup_$(Version)</AssemblyName>
     <RootNamespace>HotaSetup</RootNamespace>
     <ApplicationIcon>..\DeskHub\Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Product>HOTA DESK</Product>
-    <AssemblyTitle>HOTA DESK 安装程序</AssemblyTitle>
+    <Product>New B Desk</Product>
+    <AssemblyTitle>New B Desk 安装程序</AssemblyTitle>
     <Company>HOTA</Company>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <AppOut>$(BaseIntermediateOutputPath)app\</AppOut>

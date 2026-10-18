@@ -19,8 +19,8 @@
     <StartupObject>DeskHub.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Product>HOTA DESK</Product>
-    <AssemblyTitle>HOTA DESK</AssemblyTitle>
+    <Product>New B Desk</Product>
+    <AssemblyTitle>New B Desk</AssemblyTitle>
     <Company>HOTA</Company>
     <!-- 省内存：工作站 GC 非并发，空闲时更积极回收 -->
     <ServerGarbageCollection>false</ServerGarbageCollection>

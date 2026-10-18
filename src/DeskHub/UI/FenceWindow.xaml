@@ -124,13 +124,19 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <ScrollViewer x:Name="Scroll" Grid.Row="3" Margin="4,6,2,4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+      <ScrollViewer x:Name="Scroll" Grid.Row="3" Margin="4,6,2,4" Background="#01000000" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
         <ScrollViewer.Resources>
           <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScroll}"/>
         </ScrollViewer.Resources>
-        <ItemsControl x:Name="Items" ItemTemplate="{StaticResource ItemTpl}" Focusable="False">
-          <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-        </ItemsControl>
+        <Grid>
+          <ItemsControl x:Name="Items" ItemTemplate="{StaticResource ItemTpl}" Focusable="False">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          </ItemsControl>
+          <!-- 拖框多选的选框（跟着内容一起滚动） -->
+          <Canvas IsHitTestVisible="False">
+            <Rectangle x:Name="Band" Visibility="Collapsed" Fill="#2E07C255" Stroke="#D907C255" StrokeThickness="1" RadiusX="2" RadiusY="2"/>
+          </Canvas>
+        </Grid>
       </ScrollViewer>
       <TextBlock x:Name="EmptyText" Grid.Row="3" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
 

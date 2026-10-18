@@ -1,7 +1,7 @@
 <Window x:Class="DeskHub.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="HOTA DESK · 设置" Width="940" Height="680" MinWidth="820" MinHeight="560"
+        Title="New B Desk · 设置" Width="940" Height="680" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterScreen" FontFamily="{StaticResource UiFont}" FontSize="13"
         Background="White" Foreground="#333" Icon="pack://application:,,,/Assets/app.ico"
         UseLayoutRounding="True">
@@ -118,13 +118,16 @@
         </StackPanel>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,0,0,0" TextWrapping="Wrap" Text="例如店名、直播间口号。空着就不显示；最长和上面的时区那一行一样宽，超出的显示省略号。"/>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
-        <Button x:Name="ResetLayout" Content="恢复默认布局" Style="{StaticResource BtnW}" HorizontalAlignment="Left" Margin="0,18,0,0"/>
+        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+          <Button x:Name="Layouts" Content="布局：保存 / 切换 / 导出 / 导入…" Style="{StaticResource BtnW}" Margin="0,0,10,0"/>
+          <Button x:Name="ResetLayout" Content="恢复默认布局" Style="{StaticResource BtnW}"/>
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
 
     <!-- ========== 关于 ========== -->
     <StackPanel x:Name="PageAbout" Grid.Column="1" Margin="26,18" Visibility="Collapsed">
-      <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">HOTA DESK</TextBlock>
+      <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">New B Desk</TextBlock>
       <TextBlock x:Name="VersionText" Foreground="#999" Margin="0,6,0,0"/>
       <TextBlock Foreground="#666" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="22">
         纯本机工具，不联网、不上报、没有后台服务。<LineBreak/>

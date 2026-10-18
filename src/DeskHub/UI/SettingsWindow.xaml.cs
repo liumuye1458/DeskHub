@@ -77,6 +77,7 @@ public partial class SettingsWindow : Window
         AutoStart.IsChecked = IsAutoStart();
         AutoStart.IsEnabled = !c.Sandbox;
         ResetLayout.Click += (_, _) => _c.ResetLayout();
+        Layouts.Click += (_, _) => ((App)Application.Current).OpenLayouts();
 
         // 关于
         VersionText.Text = L.F("版本 {0}{1}", typeof(App).Assembly.GetName().Version?.ToString(3), (c.Sandbox ? L.T("（沙盒模式）") : ""));

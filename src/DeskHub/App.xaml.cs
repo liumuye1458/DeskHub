@@ -79,11 +79,12 @@ public partial class App : Application
         _ctl.Notify += msg =>
         {
             if (_scripted) { _notes.Add("提示: " + msg); return; } // 自动测试时不弹系统通知
-            _tray?.ShowBalloonTip(4000, "HOTA DESK", msg, Forms.ToolTipIcon.Info);
+            _tray?.ShowBalloonTip(4000, "New B Desk", msg, Forms.ToolTipIcon.Info);
         };
         _ctl.RequestSettings += () => OpenSettings("rules");
         _ctl.RequestArchiveLog += () => OpenSettings("flow");
         _ctl.RequestPage += OpenSettings;
+        _ctl.RequestLayouts += OpenLayouts;
         _tools = new ToolHub(_ctl, sandbox != null);
         _ctl.Tools = _tools;
         BuildTray(sandbox != null);
@@ -134,6 +135,7 @@ public partial class App : Application
         var hide = new Forms.ToolStripMenuItem(L.T("隐藏系统桌面图标")) { CheckOnClick = true, Checked = _ctl!.Cfg.HideSystemIcons, Enabled = !sandbox };
         hide.CheckedChanged += (_, _) => _ctl.SetHideSystemIcons(hide.Checked);
         menu.Items.Add(hide);
+        menu.Items.Add(L.T("布局：保存 / 切换 / 导出 / 导入…"), null, (_, _) => OpenLayouts());
         menu.Items.Add(L.T("恢复默认布局"), null, (_, _) => _ctl.ResetLayout());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(L.T("退出（恢复系统桌面）"), null, (_, _) => Quit());
@@ -142,11 +144,22 @@ public partial class App : Application
         _tray = new Forms.NotifyIcon
         {
             Icon = new System.Drawing.Icon(icon),
-            Text = sandbox ? L.T("HOTA DESK（沙盒）") : "HOTA DESK",
+            Text = sandbox ? L.T("New B Desk（沙盒）") : "New B Desk",
             ContextMenuStrip = menu,
             Visible = true,
         };
         _tray.DoubleClick += (_, _) => OpenSettings("rules");
+    }
+
+    LayoutWindow? _layouts;
+    public void OpenLayouts()
+    {
+        if (_layouts == null)
+        {
+            _layouts = new LayoutWindow(_ctl!);
+            _layouts.Closed += (_, _) => _layouts = null;
+        }
+        _layouts.Popup();
     }
 
     void OpenSettings(string page)
@@ -241,6 +254,37 @@ public partial class App : Application
                         report.AddRange(_ctl!.CaptureLayout().Select(kv => $"  {kv.Key}: {kv.Value.X:0},{kv.Value.Y:0} {kv.Value.Width:0}x{kv.Value.Height:0}"));
                         break;
                     case "settings": OpenSettings(parts[1]); break;
+                    case "layout": // layout save 名字 / apply 名字 / export 文件 / import 文件 / list / shot 文件
+                        {
+                            var arg2 = parts.Length > 2 ? parts[2] : "";
+                            switch (parts[1])
+                            {
+                                case "save": _ctl!.SaveCurrentLayout(arg2); break;
+                                case "apply": _ctl!.ApplySaved(_ctl.Cfg.SavedLayouts.First(x => x.Name == arg2)); break;
+                                case "export": _ctl!.ExportLayout(_ctl.CaptureSaved("导出测试"), arg2); break;
+                                case "import": report.Add("import → " + _ctl!.ImportLayout(arg2).Name); break;
+                                case "list": report.AddRange(_ctl!.Cfg.SavedLayouts.Select(x => $"  {x.Name} items={x.Profile.Items.Count} fences={x.Fences.Count}")); break;
+                                case "shot": OpenLayouts(); await Task.Delay(400); RenderWindow(_layouts!, arg2); break;
+                            }
+                        }
+                        break;
+                    case "sel": // sel 分区key click 序号 [ctrl|shift|ctrlshift] / band x,y,w,h [ctrl] / end / list / del / drag 目标分区key / all
+                        {
+                            var fw = Windows.OfType<FenceWindow>().First(f => f.Key == parts[1]);
+                            var a = (parts.Length > 2 ? parts[2] : "list").Split(' ');
+                            switch (a[0])
+                            {
+                                case "click": fw.TestClick(int.Parse(a[1]), a.Length > 2 && a[2].Contains("ctrl"), a.Length > 2 && a[2].Contains("shift")); break;
+                                case "band": { var v = a[1].Split(',').Select(double.Parse).ToArray(); fw.TestBand(new Rect(v[0], v[1], v[2], v[3]), a.Length > 2); } break;
+                                case "end": fw.TestEndBand(); break;
+                                case "del": _ctl!.DeleteItems(fw.SelectedItems); break;
+                                case "drag": fw.TestDragTo(Windows.OfType<FenceWindow>().First(f => f.Key == a[1])); break;
+                                case "shot": await Task.Delay(200); RenderWindow(fw, a[1]); break;
+                            }
+                            foreach (var f in Windows.OfType<FenceWindow>())
+                                if (f.SelectedItems.Count > 0) report.Add($"  选中[{f.Key}] {string.Join(", ", f.SelectedItems.Select(i => i.Name))}");
+                        }
+                        break;
                     case "clocknote": // clocknote 截图文件 文字（文字可含空格，空 = 清掉）
                         _ctl!.Cfg.ClockNote = parts.Length > 2 ? parts[2] : ""; _ctl.ApplyTexts(); await Task.Delay(300); RenderWindow(_ctl.Clock!, parts[1]); break;
                     case "winshot": // 把设置窗口画成图片

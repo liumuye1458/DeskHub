@@ -126,7 +126,7 @@ public static class GuideStore
     // ================= 导出 / 导入 =================
     sealed class ExportFile
     {
-        public string App { get; set; } = "HOTA DESK";
+        public string App { get; set; } = "New B Desk";
         public int Version { get; set; } = 1;
         public double WaX { get; set; }
         public double WaY { get; set; }

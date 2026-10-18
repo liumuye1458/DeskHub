@@ -102,7 +102,7 @@ public partial class SearchWindow : Window
             var vm = RowOf(e.OriginalSource);
             if (vm == null) return;
             Select(_rows.IndexOf(vm));
-            ShellMenu.Show(this, vm.Path, new List<ShellMenu.Own?>
+            ShellMenu.Show(this, new[] { vm.Path }, new List<ShellMenu.Own?>
             {
                 new(L.T("打开所在位置"), () => { Hide(); ShellMenu.Reveal(vm.Path); }),
                 new(L.T("复制路径"), () => Clipboard.SetText(vm.Path)),

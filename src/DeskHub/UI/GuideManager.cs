@@ -276,7 +276,7 @@ public sealed class GuideManager : Window
 
     void Export()
     {
-        var d = new Microsoft.Win32.SaveFileDialog { Filter = L.T("便签文件") + " (*.json)|*.json", FileName = L.F("HOTA DESK 便签 {0:yyyy-MM-dd}.json", DateTime.Now) };
+        var d = new Microsoft.Win32.SaveFileDialog { Filter = L.T("便签文件") + " (*.json)|*.json", FileName = L.F("New B Desk 便签 {0:yyyy-MM-dd}.json", DateTime.Now) };
         if (d.ShowDialog(this) != true) return;
         try { GuideStore.Export(d.FileName, _wa()); MessageBox.Show(this, L.F("已导出 {0} 张便签。把这个文件拷到别的电脑上，用“导入”打开。", GuideStore.D.Notes.Count), L.T("备忘录")); }
         catch (Exception ex) { MessageBox.Show(this, L.T("导出失败：") + ex.Message, L.T("备忘录")); }
