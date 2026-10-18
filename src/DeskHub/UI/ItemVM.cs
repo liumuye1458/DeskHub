@@ -34,6 +34,7 @@ public sealed class ItemVM : INotifyPropertyChanged
 
     static string BuildTip(DesktopItem it)
     {
+        if (it.IsSystem) return it.Name;
         var lines = new List<string> { it.Name };
         if (!it.IsDir && !it.IsShortcut) lines.Add(L.F("大小：{0}", Size(it.Size)));
         lines.Add(L.F("修改：{0:yyyy-MM-dd HH:mm}", it.LastWrite));

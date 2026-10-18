@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
@@ -65,6 +65,28 @@ static class ShellIcons
     {
         foreach (var k in Cache.Keys.Where(k => k.StartsWith(path + "|", StringComparison.OrdinalIgnoreCase)).ToList())
             Cache.TryRemove(k, out _);
+    }
+
+    [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellItem
+    {
+        void BindToHandler(IntPtr pbc, [MarshalAs(UnmanagedType.LPStruct)] Guid bhid, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IntPtr ppv);
+        void GetParent(out IShellItem ppsi);
+        void GetDisplayName(uint sigdn, out IntPtr name);
+    }
+
+    /// <summary>外壳给的显示名（系统图标用，例如“此电脑”“回收站”，跟随 Windows 语言）。</summary>
+    public static string? DisplayName(string path)
+    {
+        object? obj = null;
+        try
+        {
+            Native.SHCreateItemFromParsingName(path, IntPtr.Zero, typeof(IShellItem).GUID, out obj);
+            ((IShellItem)obj).GetDisplayName(0 /*SIGDN_NORMALDISPLAY*/, out var p);
+            try { return Marshal.PtrToStringUni(p); } finally { Native.CoTaskMemFree(p); }
+        }
+        catch { return null; }
+        finally { if (obj != null) Marshal.ReleaseComObject(obj); }
     }
 
     static ImageSource? Load(string path, int px, bool thumbnail)

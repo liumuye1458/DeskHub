@@ -36,6 +36,7 @@ public static class Classifier
 
             it.Fence = null;
             if (meta.Fence != null && cfg.CustomFences.Any(f => f.Id == meta.Fence)) { it.Zone = Zone.Custom; it.Fence = meta.Fence; continue; }
+            if (it.IsSystem) { it.Zone = Zone.Apps; continue; }
             if (Placed(meta, it, now) is { } z) { it.Zone = z; continue; }
             if (it.IsShortcut) { it.Zone = Zone.Apps; continue; }
             if (it.IsDir) { it.Zone = Zone.Folders; continue; }

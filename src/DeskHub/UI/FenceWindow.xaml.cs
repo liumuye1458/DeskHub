@@ -215,7 +215,7 @@ public partial class FenceWindow : Window
         var path = _downItem.Item.Path;
         // 同时带上"文件"格式：可以直接拖进微信、企业微信、浏览器上传框、资源管理器
         var data = new DataObject();
-        data.SetFileDropList(new System.Collections.Specialized.StringCollection { path });
+        if (!_downItem.Item.IsSystem) data.SetFileDropList(new System.Collections.Specialized.StringCollection { path });
         data.SetData(InternalFormat, path);
         data.SetData(FromFormat, Key);
         DragDrop.DoDragDrop(Items, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);

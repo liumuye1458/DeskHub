@@ -67,6 +67,37 @@ public sealed class DesktopSource : IDisposable
         var list = new List<DesktopItem>();
         Add(list, UserDesktop, false);
         Add(list, PublicDesktop, true);
+        list.AddRange(SystemIcons());
+        return list;
+    }
+
+    /// <summary>
+    /// 系统桌面图标（此电脑、回收站……）。它们不是文件，扫目录看不到；系统图标层被藏起来后要由分区来显示。
+    /// 显示哪几个跟 Windows“桌面图标设置”一致：HideDesktopIcons\NewStartPanel 里值为 0 的显示，没设置过的只有回收站默认显示。
+    /// </summary>
+    static readonly (string Clsid, bool Default, string Fallback)[] SystemList =
+    {
+        ("{20D04FE0-3AEA-1069-A2D8-08002B30309D}", false, "此电脑"),
+        ("{59031a47-3f72-44a7-89c5-5595fe6b30ee}", false, "用户的文件"),
+        ("{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}", false, "网络"),
+        ("{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}", false, "控制面板"),
+        ("{645FF040-5081-101B-9F08-00AA002F954E}", true, "回收站"),
+    };
+
+    static IEnumerable<DesktopItem> SystemIcons()
+    {
+        Microsoft.Win32.RegistryKey? k = null;
+        try { k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"); } catch { }
+        var list = new List<DesktopItem>();
+        foreach (var (id, def, fallback) in SystemList)
+        {
+            bool show = def;
+            try { if (k?.GetValue(id) is int v) show = v == 0; } catch { }
+            if (!show) continue;
+            var path = "::" + id;
+            list.Add(new DesktopItem { Path = path, IsDir = false, IsPublic = true, IsSystem = true, Label = Interop.ShellIcons.DisplayName(path) ?? fallback });
+        }
+        k?.Dispose();
         return list;
     }
 
@@ -95,7 +126,7 @@ public sealed class DesktopSource : IDisposable
         if (!Directory.Exists(RecentDir)) return result;
         foreach (var it in items)
         {
-            if (it.IsShortcut) continue;
+            if (it.IsShortcut || it.IsSystem) continue;
             var lnk = Path.Combine(RecentDir, it.Name + ".lnk");
             try
             {

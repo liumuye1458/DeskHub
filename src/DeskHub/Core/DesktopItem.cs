@@ -18,11 +18,16 @@ public sealed class DesktopItem
     public DateTime Created { get; init; }
     public long Size { get; init; }
 
-    public string Name => System.IO.Path.GetFileName(Path);
-    public string Ext => IsDir ? "" : System.IO.Path.GetExtension(Path).ToLowerInvariant();
+    /// <summary>系统图标（此电脑、回收站等），Path 是 "::{CLSID}"，不是真实文件：只能打开、看右键菜单，不流转、不归档、不能删改。</summary>
+    public bool IsSystem { get; init; }
+    /// <summary>系统图标的显示名（由 Windows 按当前语言给出）。</summary>
+    public string? Label { get; init; }
+
+    public string Name => IsSystem ? Label ?? Path : System.IO.Path.GetFileName(Path);
+    public string Ext => IsDir || IsSystem ? "" : System.IO.Path.GetExtension(Path).ToLowerInvariant();
 
     /// <summary>显示名：快捷方式和网址不显示扩展名（和资源管理器一致）。</summary>
-    public string DisplayName => IsShortcut ? System.IO.Path.GetFileNameWithoutExtension(Path) : Name;
+    public string DisplayName => IsSystem ? Name : IsShortcut ? System.IO.Path.GetFileNameWithoutExtension(Path) : Name;
 
     public bool IsShortcut => !IsDir && Ext is ".lnk" or ".url" or ".appref-ms" or ".website";
 

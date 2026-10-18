@@ -64,7 +64,7 @@ public sealed class DeskController : IFenceHost
         };
         _clock.Show();
 
-        Make("apps", L.T("常用软件"), L.T("固定 · 不自动移动"), f => { f.Sort = x => x.OrderBy(i => i.DisplayName, NameOrder); f.EmptyHint = L.T("桌面上的快捷方式会放在这里"); });
+        Make("apps", L.T("常用软件"), L.T("固定 · 不自动移动"), f => { f.Sort = x => x.OrderBy(i => !i.IsSystem).ThenBy(i => i.DisplayName, NameOrder); f.EmptyHint = L.T("桌面上的快捷方式会放在这里"); });
         Make("today", L.T("今天"), L.T("今天放到桌面的都在这"), f => { f.ShowNewDot = true; f.Sort = x => x.OrderByDescending(i => i.FirstSeen); f.EmptyHint = L.T("今天还没有新文件"); });
         Make("folders", L.T("项目文件夹"), L.T("固定"), f => { f.Sort = x => x.OrderBy(i => i.DisplayName, NameOrder); f.EmptyHint = L.T("桌面上的文件夹会放在这里"); });
         Make("active", L.T("进行中"), "", f => { f.ShowTabs = true; f.ShowChips = true; f.Sort = x => x.OrderByDescending(i => i.LastTouch); });
@@ -458,12 +458,14 @@ public sealed class DeskController : IFenceHost
     {
         var meta = State.Get(item.Path, DateTime.Now);
         meta.LastOpened = DateTime.Now;
-        ShellMenu.Open(item.Path);
+        if (item.IsSystem) Native.ShellExecute(IntPtr.Zero, null, "explorer.exe", "shell:" + item.Path, null, 1);
+        else ShellMenu.Open(item.Path);
         Refresh();
     }
 
     public void DeleteItem(DesktopItem item)
     {
+        if (item.IsSystem) return; // 系统图标不能删
         try
         {
             // 和资源管理器一样：放进回收站，可以还原
@@ -478,12 +480,13 @@ public sealed class DeskController : IFenceHost
     public void ShowItemMenu(FenceWindow fence, DesktopItem item)
     {
         var meta = State.Get(item.Path, DateTime.Now);
-        var own = new List<ShellMenu.Own?>
+        var own = new List<ShellMenu.Own?>();
+        if (!item.IsSystem)
         {
-            new(L.T("打开所在位置"), () => ShellMenu.Reveal(item.Path)),
-            new(L.T("重命名"), () => Rename(fence, item)),
-        };
-        bool flows = !item.IsDir && !item.IsShortcut;
+            own.Add(new(L.T("打开所在位置"), () => ShellMenu.Reveal(item.Path)));
+            own.Add(new(L.T("重命名"), () => Rename(fence, item)));
+        }
+        bool flows = !item.IsDir && !item.IsShortcut && !item.IsSystem;
         if (flows)
         {
             var subs = Cfg.Topics.Select(t => t.Name).Append(AppConfig.OtherTopic)
@@ -521,6 +524,7 @@ public sealed class DeskController : IFenceHost
 
     void Rename(FenceWindow fence, DesktopItem item)
     {
+        if (item.IsSystem) return;
         var name = InputDialog.Ask(fence, L.T("重命名"), item.Name, item.IsDir ? null : Path.GetFileNameWithoutExtension(item.Name).Length);
         if (string.IsNullOrWhiteSpace(name) || name == item.Name) return;
         try
@@ -536,7 +540,7 @@ public sealed class DeskController : IFenceHost
 
     public void MoveToTopic(DesktopItem item, string topic, FenceWindow fence)
     {
-        if (item.IsDir || item.IsShortcut) return;
+        if (item.IsDir || item.IsShortcut || item.IsSystem) return;
         var from = item.Topic;
         var meta = State.Get(item.Path, DateTime.Now);
         meta.Topic = topic;
@@ -560,6 +564,7 @@ public sealed class DeskController : IFenceHost
     public void PlaceItem(DesktopItem item, FenceWindow fence, string? topic)
     {
         if (fence.Zone == Zone.Custom) { PutInFence(item.Path, fence.Key); Refresh(); return; }
+        if (item.IsSystem) return; // 系统图标固定在常用软件里
         if (fence.Zone != item.Zone || item.Zone == Zone.Custom) Place(item.Path, fence.Zone, item.IsDir || item.IsShortcut);
         if (fence.Zone == Zone.Active && topic != null && topic != item.Topic) { MoveToTopic(item, topic, fence); return; }
         Refresh();
