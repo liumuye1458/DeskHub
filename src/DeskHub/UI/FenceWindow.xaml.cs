@@ -187,7 +187,7 @@ public partial class FenceWindow : Window
     {
         var px = (int)Math.Round(IconSize * VisualTreeHelper.GetDpi(this).DpiScaleX); // 按屏幕实际像素取，1:1 显示
         bool thumb = vm.Item.Kind is Kind.Image or Kind.Video;
-        vm.Icon = await ShellIcons.GetAsync(vm.Item.Path, vm.Item.LastWrite, px, thumb);
+        vm.Icon = await ShellIcons.GetAsync(vm.Item.IconRef ?? vm.Item.Path, vm.Item.LastWrite, px, thumb);
     }
 
     // ---------------- 选择 / 打开 / 右键 ----------------

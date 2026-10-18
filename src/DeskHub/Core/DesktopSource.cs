@@ -27,6 +27,47 @@ public sealed class DesktopSource : IDisposable
         Watch(UserDesktop);
         Watch(PublicDesktop);
         Watch(RecentDir); // 别的程序打开桌面文件时，Windows 会在这里留一个快捷方式
+        // 回收站：删文件、清空回收站时这里会变，回收站图标要跟着换（空 / 有东西）
+        foreach (var dir in RecycleDirs()) Watch(dir);
+    }
+
+    /// <summary>每个本地硬盘上当前用户的回收站目录（X:\$Recycle.Bin\用户SID），没用过的盘没有这个目录。</summary>
+    static IEnumerable<string> RecycleDirs()
+    {
+        string? sid = null;
+        try { sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value; } catch { }
+        if (sid == null) yield break;
+        foreach (var d in DriveInfo.GetDrives())
+        {
+            bool ok;
+            try { ok = d.DriveType == DriveType.Fixed && d.IsReady; } catch { ok = false; }
+            if (ok) yield return Path.Combine(d.RootDirectory.FullName, "$Recycle.Bin", sid);
+        }
+    }
+
+    /// <summary>
+    /// 回收站图标按实际空 / 满自己选：系统在同一个程序里会把回收站图标缓存住，清空后还显示满的。
+    /// 图标位置取 Windows 登记的 empty / full（换过主题图标的也跟着走）。
+    /// </summary>
+    static string RecycleIcon()
+    {
+        var name = RecycleEmpty() ? "empty" : "full";
+        string? v = null;
+        foreach (var (root, sub) in new[] { (Microsoft.Win32.Registry.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\" + RecycleBin + @"\DefaultIcon"),
+                                            (Microsoft.Win32.Registry.ClassesRoot, @"CLSID\" + RecycleBin + @"\DefaultIcon") })
+        {
+            try { using var k = root.OpenSubKey(sub); v = k?.GetValue(name) as string; } catch { }
+            if (!string.IsNullOrWhiteSpace(v)) break;
+        }
+        if (string.IsNullOrWhiteSpace(v)) v = name == "empty" ? @"%SystemRoot%\System32\imageres.dll,-55" : @"%SystemRoot%\System32\imageres.dll,-54";
+        return "@" + v;
+    }
+
+    /// <summary>回收站是否为空。</summary>
+    static bool RecycleEmpty()
+    {
+        var info = new Interop.Native.SHQUERYRBINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Interop.Native.SHQUERYRBINFO>() };
+        try { return Interop.Native.SHQueryRecycleBin(null, ref info) != 0 || info.i64NumItems == 0; } catch { return true; }
     }
 
     void Watch(string dir)
@@ -75,6 +116,8 @@ public sealed class DesktopSource : IDisposable
     /// 系统桌面图标（此电脑、回收站……）。它们不是文件，扫目录看不到；系统图标层被藏起来后要由分区来显示。
     /// 显示哪几个跟 Windows“桌面图标设置”一致：HideDesktopIcons\NewStartPanel 里值为 0 的显示，没设置过的只有回收站默认显示。
     /// </summary>
+    const string RecycleBin = "{645FF040-5081-101B-9F08-00AA002F954E}";
+
     static readonly (string Clsid, bool Default, string Fallback)[] SystemList =
     {
         ("{20D04FE0-3AEA-1069-A2D8-08002B30309D}", false, "此电脑"),
@@ -95,7 +138,7 @@ public sealed class DesktopSource : IDisposable
             try { if (k?.GetValue(id) is int v) show = v == 0; } catch { }
             if (!show) continue;
             var path = "::" + id;
-            list.Add(new DesktopItem { Path = path, IsDir = false, IsPublic = true, IsSystem = true, Label = Interop.ShellIcons.DisplayName(path) ?? fallback });
+            list.Add(new DesktopItem { Path = path, IsDir = false, IsPublic = true, IsSystem = true, Label = Interop.ShellIcons.DisplayName(path) ?? fallback, IconRef = id == RecycleBin ? RecycleIcon() : null });
         }
         k?.Dispose();
         return list;

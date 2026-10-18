@@ -22,6 +22,8 @@ public sealed class DesktopItem
     public bool IsSystem { get; init; }
     /// <summary>系统图标的显示名（由 Windows 按当前语言给出）。</summary>
     public string? Label { get; init; }
+    /// <summary>指定图标来源（"@文件,资源号"），不填就按 Path 向系统取。回收站用它按空 / 满选图标。</summary>
+    public string? IconRef { get; init; }
 
     public string Name => IsSystem ? Label ?? Path : System.IO.Path.GetFileName(Path);
     public string Ext => IsDir || IsSystem ? "" : System.IO.Path.GetExtension(Path).ToLowerInvariant();

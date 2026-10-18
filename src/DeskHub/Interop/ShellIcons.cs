@@ -89,8 +89,30 @@ static class ShellIcons
         finally { if (obj != null) Marshal.ReleaseComObject(obj); }
     }
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern uint PrivateExtractIcons(string file, int index, int cx, int cy, IntPtr[] icons, uint[]? ids, uint count, uint flags);
+    [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
+
+    /// <summary>从 "文件,序号" 取图标（序号为负表示资源号），例如 imageres.dll,-55。</summary>
+    static ImageSource? FromResource(string spec, int px)
+    {
+        var i = spec.LastIndexOf(',');
+        var file = Environment.ExpandEnvironmentVariables((i > 0 ? spec[..i] : spec).Trim().Trim('"'));
+        int index = i > 0 && int.TryParse(spec[(i + 1)..].Trim(), out var n) ? n : 0;
+        var h = new IntPtr[1];
+        if (PrivateExtractIcons(file, index, px, px, h, null, 1, 0) == 0 || h[0] == IntPtr.Zero) return null;
+        try
+        {
+            var src = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(h[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            src.Freeze();
+            return src;
+        }
+        finally { DestroyIcon(h[0]); }
+    }
+
     static ImageSource? Load(string path, int px, bool thumbnail)
     {
+        if (path.StartsWith('@')) { try { return FromResource(path[1..], px); } catch { return null; } }
         object? obj = null;
         try
         {

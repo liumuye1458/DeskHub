@@ -76,6 +76,11 @@ static class Native
     [StructLayout(LayoutKind.Sequential)]
     public struct BITMAP { public int bmType, bmWidth, bmHeight, bmWidthBytes; public ushort bmPlanes, bmBitsPixel; public IntPtr bmBits; }
 
+    [StructLayout(LayoutKind.Sequential)] // 64 位下按自然对齐（共 24 字节），按 4 字节打包会被系统拒绝
+    public struct SHQUERYRBINFO { public int cbSize; public long i64Size; public long i64NumItems; }
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SHQueryRecycleBin(string? rootPath, ref SHQUERYRBINFO info);
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr ShellExecute(IntPtr hwnd, string? verb, string file, string? args, string? dir, int show);
 
