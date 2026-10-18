@@ -534,7 +534,7 @@ public sealed class DeskController : IFenceHost
             State.Rename(item.Path, dest);
             ShellIcons.Forget(item.Path);
         }
-        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, L.T("桌面工作台")); }
+        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, "HOTA DESK"); }
         Refresh();
     }
 

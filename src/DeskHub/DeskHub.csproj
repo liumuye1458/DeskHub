@@ -19,8 +19,9 @@
     <StartupObject>DeskHub.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Product>桌面工作台</Product>
-    <Version>0.5.0</Version>
+    <Product>HOTA DESK</Product>
+    <AssemblyTitle>HOTA DESK</AssemblyTitle>
+    <Company>HOTA</Company>
     <!-- 省内存：工作站 GC 非并发，空闲时更积极回收 -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>

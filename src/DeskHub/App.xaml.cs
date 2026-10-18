@@ -10,6 +10,7 @@ namespace DeskHub;
 public partial class App : Application
 {
     Mutex? _single;
+    EventWaitHandle? _exitSignal;
     DeskController? _ctl;
     ToolHub? _tools;
     Forms.NotifyIcon? _tray;
@@ -35,6 +36,12 @@ public partial class App : Application
         try { first = _single.WaitOne(e.Args.Contains("--restart") ? 15000 : 0); }
         catch (AbandonedMutexException) { first = true; }
         if (!first) { Shutdown(); return; }
+        // 安装 / 卸载程序要关掉正在运行的本工具时，会触发这个信号：正常退出（恢复系统桌面图标、保存状态）
+        if (sandbox == null)
+        {
+            _exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\DeskHub.Exit");
+            ThreadPool.RegisterWaitForSingleObject(_exitSignal, (_, _) => Dispatcher.BeginInvoke(Quit), null, -1, true);
+        }
 
         DispatcherUnhandledException += (_, ex) => { Log(ex.Exception); ex.Handled = true; };
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
@@ -72,7 +79,7 @@ public partial class App : Application
         _ctl.Notify += msg =>
         {
             if (_scripted) { _notes.Add("提示: " + msg); return; } // 自动测试时不弹系统通知
-            _tray?.ShowBalloonTip(4000, L.T("桌面工作台"), msg, Forms.ToolTipIcon.Info);
+            _tray?.ShowBalloonTip(4000, "HOTA DESK", msg, Forms.ToolTipIcon.Info);
         };
         _ctl.RequestSettings += () => OpenSettings("rules");
         _ctl.RequestArchiveLog += () => OpenSettings("flow");
@@ -135,7 +142,7 @@ public partial class App : Application
         _tray = new Forms.NotifyIcon
         {
             Icon = new System.Drawing.Icon(icon),
-            Text = sandbox ? L.T("桌面工作台（沙盒）") : L.T("桌面工作台"),
+            Text = sandbox ? L.T("HOTA DESK（沙盒）") : "HOTA DESK",
             ContextMenuStrip = menu,
             Visible = true,
         };

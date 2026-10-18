@@ -1,7 +1,7 @@
 <Window x:Class="DeskHub.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="桌面工作台 · 设置" Width="940" Height="680" MinWidth="820" MinHeight="560"
+        Title="HOTA DESK · 设置" Width="940" Height="680" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterScreen" FontFamily="{StaticResource UiFont}" FontSize="13"
         Background="White" Foreground="#333" Icon="pack://application:,,,/Assets/app.ico"
         UseLayoutRounding="True">
@@ -119,7 +119,7 @@
 
     <!-- ========== 关于 ========== -->
     <StackPanel x:Name="PageAbout" Grid.Column="1" Margin="26,18" Visibility="Collapsed">
-      <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">桌面工作台</TextBlock>
+      <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">HOTA DESK</TextBlock>
       <TextBlock x:Name="VersionText" Foreground="#999" Margin="0,6,0,0"/>
       <TextBlock Foreground="#666" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="22">
         纯本机工具，不联网、不上报、没有后台服务。<LineBreak/>

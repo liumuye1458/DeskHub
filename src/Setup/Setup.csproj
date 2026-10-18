@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    HOTA DESK 安装包。一条命令出安装包：
+      dotnet publish src/Setup -c Release -o 发布
+    会先发布主程序、打成压缩包嵌进来，再生成单个文件 HOTA_DESK_Setup_版本号.exe。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <AssemblyName>HOTA_DESK_Setup_$(Version)</AssemblyName>
+    <RootNamespace>HotaSetup</RootNamespace>
+    <ApplicationIcon>..\DeskHub\Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>HOTA DESK</Product>
+    <AssemblyTitle>HOTA DESK 安装程序</AssemblyTitle>
+    <Company>HOTA</Company>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <AppOut>$(BaseIntermediateOutputPath)app\</AppOut>
+    <Payload>$(BaseIntermediateOutputPath)payload.zip</Payload>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\DeskHub\Assets\app.ico" Link="app.ico" />
+  </ItemGroup>
+
+  <!-- 先发布主程序并打包，再把压缩包嵌进安装程序 -->
+  <Target Name="BuildPayload" BeforeTargets="PrepareForBuild" Condition="'$(Configuration)' == 'Release'">
+    <RemoveDir Directories="$(AppOut)" />
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)..\DeskHub\DeskHub.csproj&quot; -c Release -nologo -v q -o &quot;$(AppOut)&quot;" />
+    <ItemGroup><Pdb Include="$(AppOut)*.pdb" /></ItemGroup>
+    <Delete Files="@(Pdb)" />
+    <ZipDirectory SourceDirectory="$(AppOut)" DestinationFile="$(Payload)" Overwrite="true" />
+    <ItemGroup><EmbeddedResource Include="$(Payload)" LogicalName="payload.zip" /></ItemGroup>
+  </Target>
+
+</Project>
