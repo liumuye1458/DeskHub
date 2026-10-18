@@ -7,7 +7,7 @@ using DeskHub.Core;
 
 namespace DeskHub.UI;
 
-/// <summary>编辑一张便签：文字、颜色、字号、箭头、置顶、每天/一次性、定时出现、流程步骤。</summary>
+/// <summary>编辑一张便签：文字、颜色、字号、小尖角、置顶、每天/一次性、定时出现、流程步骤。</summary>
 public sealed class GuideEditor : Window
 {
     readonly GuideNote _n;
@@ -35,7 +35,7 @@ public sealed class GuideEditor : Window
         foreach (var (v, name) in new[] { (14.0, L.T("小")), (18.0, L.T("中")), (24.0, L.T("大")), (32.0, L.T("特大")) })
             _size.Items.Add(new ComboBoxItem { Content = name, Tag = v, IsSelected = Math.Abs(n.FontSize - v) < 0.1 });
         if (_size.SelectedIndex < 0) _size.SelectedIndex = 1;
-        _arrow.Content = L.T("带箭头（拖动箭头尖指向屏幕上任何地方）"); _arrow.IsChecked = n.Arrow;
+        _arrow.Content = L.T("带小尖角（把便签放在要指的东西右边，尖角对准它）"); _arrow.IsChecked = n.Arrow;
         _top.Content = L.T("置顶：浮在所有窗口上面（指软件里的按钮时用；不勾就贴在桌面上）"); _top.IsChecked = n.Topmost;
         _daily.Content = L.T("每天重复：点 OK 后今天不再显示，明天（凌晨 5 点后）再出现"); _daily.IsChecked = n.Daily;
         _once.Content = L.T("一次性：点 OK 后收起，不再出现"); _once.IsChecked = !n.Daily;
@@ -152,7 +152,7 @@ public sealed class GuideManager : Window
 
         var hint = new TextBlock
         {
-            Text = L.T("便签贴在屏幕上，箭头可以指向任何地方（拖箭头尖的圆点）；点 OK 后 3 秒收起。每天重复的便签第二天凌晨 5 点后重新出现。摆好后点“锁定”，就只能点 OK，不会被误拖误改。"),
+            Text = L.T("便签像对话气泡，左边有个小尖角：把便签拖到要指的东西右边，尖角对准它。点 OK 后 3 秒收起，每天重复的便签第二天凌晨 5 点后重新出现。摆好后点“锁定”，就只能点 OK，不会被误拖误改。"),
             Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 0, 16, 10), FontSize = 12.5,
         };
         var root = new DockPanel();
@@ -182,7 +182,7 @@ public sealed class GuideManager : Window
         var now = DateTime.Now;
         var notes = GuideStore.D.Notes.OrderBy(n => n.Flow.Length == 0 ? 1 : 0).ThenBy(n => n.Flow).ThenBy(n => n.Step).ThenBy(n => n.Created).ToList();
         if (notes.Count == 0)
-            _list.Children.Add(new TextBlock { Text = L.T("还没有便签。点“＋ 新建便签”写一张，然后在屏幕上拖到合适的位置，用箭头指着要操作的地方。"), Foreground = Brushes.Gray, Margin = new Thickness(4, 30, 4, 0), TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center });
+            _list.Children.Add(new TextBlock { Text = L.T("还没有便签。点“＋ 新建便签”写一张，然后拖到要指的东西右边，用左边的小尖角对准它。"), Foreground = Brushes.Gray, Margin = new Thickness(4, 30, 4, 0), TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center });
         foreach (var n in notes) _list.Children.Add(Row(n, now));
     }
 
@@ -211,7 +211,7 @@ public sealed class GuideManager : Window
         if (n.Flow.Length > 0) tags.Add(L.F("{0} · 第 {1} 步", n.Flow, n.Step));
         if (n.ShowAt.Length > 0 && st != GuideStore.State.Waiting) tags.Add(L.F("定时 {0}", n.ShowAt));
         if (n.Topmost) tags.Add(L.T("置顶"));
-        if (!n.Arrow) tags.Add(L.T("无箭头"));
+        if (!n.Arrow) tags.Add(L.T("无尖角"));
         info.Children.Add(new TextBlock { Text = string.Join("  ·  ", tags), Foreground = st == GuideStore.State.Showing ? B("#07A548") : B("#999"), FontSize = 12, Margin = new Thickness(0, 4, 0, 0) });
         Grid.SetColumn(info, 1);
         g.Children.Add(info);
@@ -248,19 +248,18 @@ public sealed class GuideManager : Window
         {
             X = Math.Round(wa.Left + wa.Width / 2 - 140), Y = Math.Round(wa.Top + wa.Height / 2 - 60),
         };
-        n.TipX = n.X - 140; n.TipY = n.Y + 180;
         if (!GuideEditor.Ask(this, n, true)) return;
         if (n.Flow.Length > 0)
         {
             // 同一流程的新步骤：放在上一步旁边，免得叠在一起
             var prev = GuideStore.D.Notes.Where(o => o.Flow == n.Flow).OrderByDescending(o => o.Step).FirstOrDefault();
-            if (prev != null) { n.X = prev.X + 40; n.Y = prev.Y + 40; n.TipX = prev.TipX + 40; n.TipY = prev.TipY + 40; }
+            if (prev != null) { n.X = prev.X + 40; n.Y = prev.Y + 40; }
         }
         GuideStore.D.Notes.Add(n);
         bool wasLocked = GuideStore.D.Locked;
         GuideStore.D.Locked = false; // 新便签要能拖到位置
         GuideStore.Save();
-        if (wasLocked) MessageBox.Show(this, L.T("已自动解锁，便签和箭头可以拖动了。摆好后记得再点“锁定”。"), L.T("备忘录"));
+        if (wasLocked) MessageBox.Show(this, L.T("已自动解锁，便签可以拖动了。摆好后记得再点“锁定”。"), L.T("备忘录"));
     }
 
     void ToggleLock()
@@ -297,7 +296,7 @@ public sealed class GuideManager : Window
         try
         {
             int k = GuideStore.Import(d.FileName, _wa(), replace);
-            MessageBox.Show(this, L.F("已导入 {0} 张便签。屏幕大小不同时位置按比例换算过，箭头最好再对一下。", k), L.T("备忘录"));
+            MessageBox.Show(this, L.F("已导入 {0} 张便签。屏幕大小不同时位置按比例换算过，最好再对一下位置。", k), L.T("备忘录"));
         }
         catch (Exception ex) { MessageBox.Show(this, L.T("导入失败：") + ex.Message, L.T("备忘录")); }
     }

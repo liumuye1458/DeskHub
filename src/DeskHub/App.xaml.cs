@@ -468,8 +468,10 @@ public partial class App : Application
         el.UpdateLayout();
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(el.ActualWidth * dpi.DpiScaleX), (int)(el.ActualHeight * dpi.DpiScaleY), 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, System.Windows.Media.PixelFormats.Pbgra32);
         var dv = new System.Windows.Media.DrawingVisual();
-        using (var dc = dv.RenderOpen()) { dc.DrawRectangle(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3a, 0x5a, 0x7a)), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight)); dc.DrawRectangle(new System.Windows.Media.VisualBrush(el), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight)); }
+        // 先铺一层桌面似的底色，再原样画窗口内容（不用 VisualBrush，它会把内容拉伸到铺满）
+        using (var dc = dv.RenderOpen()) dc.DrawRectangle(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3a, 0x5a, 0x7a)), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
         rtb.Render(dv);
+        rtb.Render(el);
         var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
         enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
         using var fs = File.Create(file); enc.Save(fs);

@@ -5,8 +5,8 @@ using System.Windows;
 namespace DeskHub.Core;
 
 /// <summary>
-/// 一张贴在屏幕上的指引便签：一段文字 + 一个可以指向屏幕任何地方的箭头 + 一个 OK。
-/// 用途：给自己和直播间 MC 做“操作提示”，例如箭头指着某个图标写“第一步：先打开它”。
+/// 一张贴在屏幕上的指引便签：对话气泡样子，左边一个小尖角指着旁边的东西 + 一个 OK。
+/// 用途：给自己和直播间 MC 做“操作提示”，例如放在某个图标右边写“第一步：先打开它”。
 /// </summary>
 public sealed class GuideNote
 {
@@ -16,11 +16,12 @@ public sealed class GuideNote
     public string Color { get; set; } = "yellow";
     public double FontSize { get; set; } = 18;
 
-    // 位置（设备无关像素，屏幕坐标）：便签左上角和宽度；箭头尖指的点
+    // 位置（设备无关像素，屏幕坐标）：便签左上角和宽度。Arrow = 左边带小尖角
     public double X { get; set; }
     public double Y { get; set; }
     public double W { get; set; } = 280;
     public bool Arrow { get; set; } = true;
+    /// <summary>0.6.0 长箭头指的点，已不用（留着读旧数据不报错）。</summary>
     public double TipX { get; set; }
     public double TipY { get; set; }
 
@@ -42,7 +43,7 @@ public sealed class GuideNote
 
 public sealed class GuideData
 {
-    /// <summary>锁定：便签和箭头拖不动、改不了字，只能点 OK（防 MC 误改）。</summary>
+    /// <summary>锁定：便签拖不动、改不了字，只能点 OK（防 MC 误改）。</summary>
     public bool Locked { get; set; }
     public List<GuideNote> Notes { get; set; } = new();
 }

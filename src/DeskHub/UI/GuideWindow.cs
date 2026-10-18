@@ -13,8 +13,9 @@ using DeskHub.Interop;
 namespace DeskHub.UI;
 
 /// <summary>
-/// 屏幕上的一张指引便签（带箭头）。窗口是透明的，大小刚好包住便签和箭头尖；透明的地方点击会穿透到下面。
-/// 没锁定时：拖便签移动（箭头尖不动，箭头跟着转），拖箭头尖的圆点改指向，右下角拉宽，右键菜单改设置，双击改文字。
+/// 屏幕上的一张指引便签：对话气泡的样子，左边一个小尖角。便签永远放在要指的东西右边，用尖角对准它。
+/// 窗口是透明的，大小刚好包住便签（含阴影）；透明的地方点击会穿透到下面。
+/// 没锁定时：拖便签移动，右下角拉宽，右键菜单改设置，双击改文字。
 /// 锁定后：只能点 OK。
 /// </summary>
 public sealed class GuideWindow : Window
@@ -29,14 +30,14 @@ public sealed class GuideWindow : Window
     Border _card = null!;
     int _countdown;
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
-    const double Pad = 24, HandleR = 9;
+    const double Pad = 18;
 
     public static readonly Dictionary<string, (string Card, string Border, string Accent)> Colors = new()
     {
-        ["yellow"] = ("#FFF4B8", "#E8C547", "#F08C00"),
-        ["red"] = ("#FFE3E0", "#F2A39E", "#E5413C"),
-        ["green"] = ("#DDF6E6", "#8FD5A8", "#07A548"),
-        ["blue"] = ("#DCEBFF", "#9CC2F5", "#1F6FEB"),
+        ["yellow"] = ("#FFF7D6", "#EAD58E", "#D99A1E"),
+        ["red"] = ("#FFECEA", "#F0B9B4", "#E0524C"),
+        ["green"] = ("#E9F8EF", "#A9DFBE", "#07A548"),
+        ["blue"] = ("#E8F1FF", "#B3CDF2", "#3A7BE0"),
     };
 
     public GuideWindow(GuideNote n, Action<GuideNote> edit, Action openManager)
@@ -105,53 +106,87 @@ public sealed class GuideWindow : Window
         });
         stack.Children.Add(BottomRow(accent));
 
+        // 文字层：透明底，外形（圆角卡片 + 左边的小尖角）单独画成一个整体，边框和阴影才是连着的
         _card = new Border
         {
-            Width = n.W, Background = B(cardC), BorderBrush = Locked ? B(borderC) : accent, BorderThickness = new Thickness(Locked ? 1.5 : 2),
-            CornerRadius = new CornerRadius(8), Padding = new Thickness(14, 10, 14, 12), Child = stack,
-            Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = 0.3, RenderingBias = RenderingBias.Performance },
+            Width = n.W, Background = Brushes.Transparent, Padding = new Thickness(16, 12, 14, 12), Child = stack,
             Cursor = Locked ? Cursors.Arrow : Cursors.SizeAll,
         };
         if (!Locked) HookCardDrag(_card);
 
         _card.Measure(new Size(n.W, double.PositiveInfinity));
-        double h = _card.DesiredSize.Height;
-        var note = new Rect(n.X, n.Y, n.W, h);
-        var tip = new Point(n.TipX, n.TipY);
-        bool arrow = n.Arrow && !note.Contains(tip);
-        var bound = note;
-        if (arrow) bound.Union(new Rect(tip.X - HandleR - 4, tip.Y - HandleR - 4, (HandleR + 4) * 2, (HandleR + 4) * 2));
-        bound.Inflate(Pad, Pad);
+        double h = Math.Max(_card.DesiredSize.Height, TailBottom + Radius);
+        bool tail = n.Arrow;
 
-        Left = bound.X; Top = bound.Y; Width = bound.Width; Height = bound.Height;
+        // 窗口 = 卡片 + 尖角 + 阴影余量
+        double left = Pad + (tail ? TailLen : 0);
+        Left = n.X - left; Top = n.Y - Pad;
+        Width = left + n.W + Pad; Height = Pad + h + Pad;
         _canvas.Children.Clear();
-        _canvas.Width = bound.Width; _canvas.Height = bound.Height;
+        _canvas.Width = Width; _canvas.Height = Height;
 
-        if (arrow)
+        var shape = new Path
         {
-            var o = new Vector(-bound.X, -bound.Y);
-            var from = Edge(note, tip) + o; var to = tip + o;
-            foreach (var shape in ArrowShapes(from, to, accent)) _canvas.Children.Add(shape);
-        }
-        Canvas.SetLeft(_card, note.X - bound.X); Canvas.SetTop(_card, note.Y - bound.Y);
+            Data = Bubble(new Rect(left, Pad, n.W, h), tail),
+            Fill = B(cardC), Stroke = Locked ? B(borderC) : accent, StrokeThickness = Locked ? 1 : 1.5, StrokeLineJoin = PenLineJoin.Round,
+            Effect = new DropShadowEffect { BlurRadius = 16, ShadowDepth = 3, Direction = 270, Opacity = 0.22, RenderingBias = RenderingBias.Performance },
+        };
+        _shape = shape;
+        _canvas.Children.Add(shape);
+        Canvas.SetLeft(_card, left); Canvas.SetTop(_card, Pad);
+        _card.Height = h;
         _canvas.Children.Add(_card);
 
         if (!Locked)
         {
             // 右下角拉宽
-            var grip = new Border { Width = 14, Height = 14, Background = Brushes.Transparent, Cursor = Cursors.SizeWE, Child = new Path { Data = Geometry.Parse("M12,2 L2,12 M12,7 L7,12"), Stroke = B("#66000000"), StrokeThickness = 1.2 } };
-            Canvas.SetLeft(grip, note.Right - bound.X - 16); Canvas.SetTop(grip, note.Bottom - bound.Y - 16);
+            var grip = new Border { Width = 14, Height = 14, Background = Brushes.Transparent, Cursor = Cursors.SizeWE, Child = new Path { Data = Geometry.Parse("M12,3 L3,12 M12,8 L8,12"), Stroke = B("#55000000"), StrokeThickness = 1.2 } };
+            Canvas.SetLeft(grip, left + n.W - 17); Canvas.SetTop(grip, Pad + h - 17);
             HookResize(grip);
             _canvas.Children.Add(grip);
-            if (arrow)
-            {
-                var handle = new Ellipse { Width = HandleR * 2, Height = HandleR * 2, Fill = accent, Stroke = Brushes.White, StrokeThickness = 2.5, Cursor = Cursors.Cross, ToolTip = L.T("拖动改变箭头指向") };
-                Canvas.SetLeft(handle, tip.X - bound.X - HandleR); Canvas.SetTop(handle, tip.Y - bound.Y - HandleR);
-                HookTipDrag(handle);
-                _canvas.Children.Add(handle);
-            }
         }
     }
+
+    // 外形尺寸：卡片圆角；小尖角长在左边靠上，尖朝左上（像对话气泡）
+    const double Radius = 10, TailTop = 10, TailBottom = 32, TailLen = 13;
+
+    /// <summary>
+    /// 圆角卡片 + 左侧小尖角，一笔画成（边框连续、阴影一体）。尖角两边是微微内凹的弧线，尖端略圆，看起来更柔和。
+    /// 尖端位置 = 卡片左上角往左 TailLen、往下 3：便签放在要指的东西右边，用尖端对准它。
+    /// </summary>
+    static Geometry Bubble(Rect r, bool tail)
+    {
+        double x = r.X, y = r.Y, R = r.Right, Bm = r.Bottom, k = Radius;
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            c.BeginFigure(new Point(x + k, y), true, true);
+            c.LineTo(new Point(R - k, y), true, true);
+            c.ArcTo(new Point(R, y + k), new Size(k, k), 0, false, SweepDirection.Clockwise, true, true);
+            c.LineTo(new Point(R, Bm - k), true, true);
+            c.ArcTo(new Point(R - k, Bm), new Size(k, k), 0, false, SweepDirection.Clockwise, true, true);
+            c.LineTo(new Point(x + k, Bm), true, true);
+            c.ArcTo(new Point(x, Bm - k), new Size(k, k), 0, false, SweepDirection.Clockwise, true, true);
+            if (tail)
+            {
+                double ty = y + 3, tx = x - TailLen;   // 尖端：略高于卡片顶边下一点，朝左上
+                c.LineTo(new Point(x, y + TailBottom), true, true);
+                // 下边：从卡片边缘弯出去到尖端（内凹）
+                c.QuadraticBezierTo(new Point(x - 2, y + 16), new Point(tx + 1.2, ty + 1.6), true, true);
+                // 尖端小圆头
+                c.QuadraticBezierTo(new Point(tx - 0.8, ty - 0.4), new Point(tx + 1.6, ty - 0.2), true, true);
+                // 上边：回到卡片边缘（内凹）
+                // 上边：顺着接进左上圆角（TailTop = 圆角半径，正好接上，不留缺口）
+                c.QuadraticBezierTo(new Point(x - 4, y + 5), new Point(x, y + TailTop), true, true);
+            }
+            c.LineTo(new Point(x, y + k), true, true);
+            c.ArcTo(new Point(x + k, y), new Size(k, k), 0, false, SweepDirection.Clockwise, true, true);
+        }
+        g.Freeze();
+        return g;
+    }
+
+    Path? _shape;
 
     FrameworkElement BottomRow(Brush accent)
     {
@@ -196,32 +231,6 @@ public sealed class GuideWindow : Window
         return t;
     }
 
-    /// <summary>箭头从便签边框上（朝着箭头尖的方向）出发。</summary>
-    static Point Edge(Rect r, Point tip)
-    {
-        var c = new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
-        var d = tip - c;
-        double tx = d.X == 0 ? double.MaxValue : (r.Width / 2) / Math.Abs(d.X);
-        double ty = d.Y == 0 ? double.MaxValue : (r.Height / 2) / Math.Abs(d.Y);
-        return c + d * Math.Min(tx, ty);
-    }
-
-    /// <summary>粗箭头：先画一圈白边（在深色、浅色背景上都看得清），再画彩色箭杆和箭头。</summary>
-    static IEnumerable<Shape> ArrowShapes(Point from, Point to, Brush color)
-    {
-        var d = to - from;
-        if (d.Length < 1) yield break;
-        d.Normalize();
-        var n = new Vector(-d.Y, d.X);
-        const double head = 20, half = 11;
-        var baseP = to - d * head;
-        var tri = new PathGeometry(new[] { new PathFigure(to, new[] { new LineSegment(baseP + n * half, true), new LineSegment(baseP - n * half, true) }, true) });
-        yield return new Line { X1 = from.X, Y1 = from.Y, X2 = baseP.X, Y2 = baseP.Y, Stroke = Brushes.White, StrokeThickness = 10, StrokeStartLineCap = PenLineCap.Round, Opacity = 0.9 };
-        yield return new Path { Data = tri, Fill = Brushes.White, Stroke = Brushes.White, StrokeThickness = 5, StrokeLineJoin = PenLineJoin.Round, Opacity = 0.9 };
-        yield return new Line { X1 = from.X, Y1 = from.Y, X2 = baseP.X, Y2 = baseP.Y, Stroke = color, StrokeThickness = 5, StrokeStartLineCap = PenLineCap.Round };
-        yield return new Path { Data = tri, Fill = color };
-    }
-
     // ================= OK：3 秒后收起 =================
     void StartCountdown()
     {
@@ -244,7 +253,7 @@ public sealed class GuideWindow : Window
     public void Flash()
     {
         var a = new DoubleAnimation(1, 0.35, TimeSpan.FromMilliseconds(350)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(4) };
-        _card.BeginAnimation(OpacityProperty, a);
+        BeginAnimation(OpacityProperty, a);
     }
 
     // ================= 拖动 =================
@@ -265,22 +274,17 @@ public sealed class GuideWindow : Window
 
     bool _dragCard, _moved;
 
-    void HookTipDrag(Ellipse h)
-    {
-        h.MouseLeftButtonDown += (_, e) => { _dragTip = true; _tipStart = Cursor(e); _tip0 = new Point(Note.TipX, Note.TipY); CaptureMouse(); e.Handled = true; };
-    }
-
     void HookResize(Border g)
     {
         g.MouseLeftButtonDown += (_, e) => { _dragW = true; _tipStart = Cursor(e); _w0 = Note.W; CaptureMouse(); e.Handled = true; };
     }
 
-    bool _dragTip, _dragW; Point _tipStart, _tip0; double _w0;
+    bool _dragW; Point _tipStart, _tip0; double _w0;
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (!(_dragTip || _dragW || _dragCard) || e.LeftButton != MouseButtonState.Pressed) return;
+        if (!(_dragW || _dragCard) || e.LeftButton != MouseButtonState.Pressed) return;
         var d = Cursor(e) - _tipStart;
         if (_dragCard)
         {
@@ -288,7 +292,6 @@ public sealed class GuideWindow : Window
             _moved = true;
             Note.X = Math.Round(_tip0.X + d.X); Note.Y = Math.Round(_tip0.Y + d.Y);
         }
-        else if (_dragTip) { Note.TipX = Math.Round(_tip0.X + d.X); Note.TipY = Math.Round(_tip0.Y + d.Y); }
         else Note.W = Math.Clamp(Math.Round(_w0 + d.X), 160, 900);
         Build();
     }
@@ -296,9 +299,9 @@ public sealed class GuideWindow : Window
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
-        if (!(_dragTip || _dragW || _dragCard)) return;
+        if (!(_dragW || _dragCard)) return;
         bool save = !_dragCard || _moved;
-        _dragTip = _dragW = _dragCard = false;
+        _dragW = _dragCard = false;
         ReleaseMouseCapture();
         if (save) GuideStore.Save();
     }
@@ -318,7 +321,7 @@ public sealed class GuideWindow : Window
         }
         var edit = new MenuItem { Header = L.T("编辑…") }; edit.Click += (_, _) => _edit(n); m.Items.Add(edit);
         m.Items.Add(new Separator());
-        Add(m, L.T("显示箭头"), () => { n.Arrow = !n.Arrow; if (n.Arrow && new Rect(n.X, n.Y, n.W, 80).Contains(new Point(n.TipX, n.TipY))) { n.TipX = n.X - 120; n.TipY = n.Y + 160; } }, n.Arrow);
+        Add(m, L.T("显示小尖角"), () => n.Arrow = !n.Arrow, n.Arrow);
         Add(m, L.T("置顶（浮在所有窗口上面）"), () => n.Topmost = !n.Topmost, n.Topmost);
         Add(m, L.T("每天重复（点 OK 后明天再出现）"), () => n.Daily = true, n.Daily);
         Add(m, L.T("一次性（点 OK 后收起）"), () => n.Daily = false, !n.Daily);
