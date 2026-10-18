@@ -248,7 +248,24 @@ public sealed class DeskController : IFenceHost
     // ================= 多显示器：每种显示器组合一套布局 =================
     // 测试用：假装换了显示器（沙盒里没法真的插拔）
     string? _fakeSig; Rect? _fakeWa;
-    Rect WA => _fakeWa ?? SystemParameters.WorkArea;
+    Rect WA => _fakeWa ?? LiveWorkArea();
+
+    /// <summary>
+    /// 主屏工作区（设备无关像素）。直接问系统当前的屏幕，不用 SystemParameters.WorkArea：
+    /// 插拔显示器后它要等任务栏重新登记才更新，刚换完屏时读到的是旧值（没扣任务栏）。
+    /// </summary>
+    static Rect LiveWorkArea()
+    {
+        try
+        {
+            var s = System.Windows.Forms.Screen.PrimaryScreen;
+            if (s == null || SystemParameters.PrimaryScreenWidth <= 0) return SystemParameters.WorkArea;
+            double k = s.Bounds.Width / SystemParameters.PrimaryScreenWidth; // 物理像素 / 设备无关像素
+            var w = s.WorkingArea;
+            return new Rect(w.X / k, w.Y / k, w.Width / k, w.Height / k);
+        }
+        catch { return SystemParameters.WorkArea; }
+    }
 
     /// <summary>
     /// 显示器组合的标识：每块屏的位置和分辨率（物理像素，标出主屏）+ 主屏按缩放后的大小。
