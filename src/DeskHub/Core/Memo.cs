@@ -66,6 +66,9 @@ public sealed class MemoStore
 
     public MemoList? Find(string id) => Lists.FirstOrDefault(l => l.Id == id);
 
+    /// <summary>待办文字统一换行（Windows 的 \r\n 在界面上会显示成两行），去掉首尾空白。</summary>
+    public static string Clean(string s) => s.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+
     public static string RepeatName(string r) => r switch { "day" => L.T("每天"), "workday" => L.T("工作日"), "week" => L.T("每周"), "month" => L.T("每月"), _ => "" };
 
     /// <summary>重复提醒：算出下一次（晚于 now）。</summary>

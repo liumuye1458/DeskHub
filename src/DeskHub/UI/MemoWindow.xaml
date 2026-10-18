@@ -29,8 +29,9 @@
         <TextBlock x:Name="ListTitle" FontSize="18" FontWeight="Bold" Foreground="#222" VerticalAlignment="Center"/>
       </DockPanel>
       <Grid Grid.Row="1" Margin="24,0,20,8" x:Name="AddRow">
-        <TextBox x:Name="AddBox" Style="{StaticResource WinTextBox}" Height="36" Padding="10,0" VerticalContentAlignment="Center"/>
-        <TextBlock x:Name="AddHint" Text="＋ 添加待办，回车保存" Foreground="#AAA" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+        <TextBox x:Name="AddBox" Style="{StaticResource WinTextBox}" MinHeight="36" MaxHeight="180" Padding="8,8" VerticalContentAlignment="Top"
+                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+        <TextBlock x:Name="AddHint" Text="＋ 添加待办，回车保存（Shift+回车换行）" Foreground="#AAA" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
       </Grid>
       <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
         <StackPanel x:Name="ItemPanel" Margin="18,0,16,16"/>

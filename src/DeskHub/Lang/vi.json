@@ -490,5 +490,7 @@
  "选择归档位置": "Chọn vị trí lưu trữ",
  "例：{0}": "Ví dụ: {0}",
  "没找到": "Không tìm thấy",
- "超时": "Hết thời gian"
+ "超时": "Hết thời gian",
+ "＋ 添加待办，回车保存（Shift+回车换行）": "+ Thêm việc cần làm, Enter để lưu (Shift+Enter xuống dòng)",
+ "内容": "Nội dung"
 }

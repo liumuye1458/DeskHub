@@ -24,10 +24,13 @@ public partial class MemoWindow : Window
         _pin = pin;
         _cur = S.Lists.FirstOrDefault()?.Id ?? DoneView;
         AddBox.TextChanged += (_, _) => AddHint.Visibility = AddBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AddBox.KeyDown += (_, e) =>
+        // 多行输入：回车保存，Shift+回车换行；粘贴多段文字整段保留（单行框会把第一个换行后的内容截掉）
+        AddBox.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Enter || AddBox.Text.Trim().Length == 0 || S.Find(_cur) is not { } l) return;
-            l.Items.Add(new MemoItem { Text = AddBox.Text.Trim() });
+            if (e.Key != Key.Enter || (Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+            e.Handled = true;
+            if (AddBox.Text.Trim().Length == 0 || S.Find(_cur) is not { } l) return;
+            l.Items.Add(new MemoItem { Text = MemoStore.Clean(AddBox.Text) });
             AddBox.Text = "";
             S.Save();
         };
@@ -240,7 +243,7 @@ static class MemoUI
 
     static void Edit(Window owner, MemoItem it)
     {
-        var n = InputDialog.Ask(owner, L.T("修改待办"), it.Text)?.Trim();
+        var n = InputDialog.Ask(owner, L.T("修改待办"), it.Text, multiline: true) is { } s ? MemoStore.Clean(s) : null;
         if (string.IsNullOrEmpty(n) || n == it.Text) return;
         it.Text = n; S.Save();
     }

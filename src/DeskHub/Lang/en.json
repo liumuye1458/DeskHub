@@ -490,5 +490,7 @@
  "选择归档位置": "Choose archive location",
  "例：{0}": "e.g. {0}",
  "没找到": "Not found",
- "超时": "Timed out"
+ "超时": "Timed out",
+ "＋ 添加待办，回车保存（Shift+回车换行）": "+ Add a to-do, Enter to save (Shift+Enter for new line)",
+ "内容": "Content"
 }

@@ -490,5 +490,7 @@
  "选择归档位置": "Elegir ubicación de archivo",
  "例：{0}": "Ej.: {0}",
  "没找到": "No encontrado",
- "超时": "Tiempo agotado"
+ "超时": "Tiempo agotado",
+ "＋ 添加待办，回车保存（Shift+回车换行）": "+ Añadir tarea, Intro para guardar (Mayús+Intro nueva línea)",
+ "内容": "Contenido"
 }

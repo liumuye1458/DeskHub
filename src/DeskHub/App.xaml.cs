@@ -359,6 +359,18 @@ public partial class App : Application
                                 case "done": st.SetDone(st.Lists[0].Items.First(i => !i.Done), true); st.Save(); break;
                                 case "pin": st.Lists[int.Parse(arg)].Pinned = true; st.Save(); break;
                                 case "open": _tools!.Memo(); break;
+                                case "type": // type 文本文件：把一段（多行）文字放进添加框，再按回车
+                                    {
+                                        var text = File.ReadAllText(arg);
+                                        var mw = Windows.OfType<MemoWindow>().First();
+                                        mw.AddBox.Focus(); mw.AddBox.SelectedText = text;
+                                        report.Add($"memo type: 原文 {text.Length} 字 / 框里 {mw.AddBox.Text.Length} 字");
+                                        var ke = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(mw.AddBox)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+                                        mw.AddBox.RaiseEvent(ke);
+                                        var saved = st.Lists.SelectMany(l => l.Items).OrderBy(i => i.Created).Last();
+                                        report.Add($"memo saved: {saved.Text.Length} 字，{saved.Text.Split('\n').Length} 段，框已清空={mw.AddBox.Text.Length == 0}");
+                                    }
+                                    break;
                                 case "shot": await Task.Delay(300); RenderWindow(Windows.OfType<MemoWindow>().First(), arg); break;
                                 case "noteshot": await Task.Delay(300); RenderWindow(Windows.OfType<NoteWindow>().First(), arg); break;
                                 case "toastshot": await Task.Delay(300); RenderWindow(Windows.OfType<ReminderToast>().First(), arg); report.Add("toasts: " + Windows.OfType<ReminderToast>().Count()); break;

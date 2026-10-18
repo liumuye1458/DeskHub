@@ -490,5 +490,7 @@
  "选择归档位置": "Pilih lokasi arsip",
  "例：{0}": "Contoh: {0}",
  "没找到": "Tidak ditemukan",
- "超时": "Waktu habis"
+ "超时": "Waktu habis",
+ "＋ 添加待办，回车保存（Shift+回车换行）": "+ Tambah tugas, Enter untuk simpan (Shift+Enter baris baru)",
+ "内容": "Isi"
 }

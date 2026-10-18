@@ -43,13 +43,17 @@ public sealed class NoteWindow : Window
         head.Children.Add(_title);
         head.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) { openMemo(); return; } DragMove(); Moved?.Invoke(); };
 
-        _add = new TextBox { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(2, 4, 2, 4), Foreground = Brush("#333") };
+        _add = new TextBox { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(2, 4, 2, 4), Foreground = Brush("#333"),
+                             AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 140, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _addHint = new TextBlock { Text = L.T("＋ 添加，回车保存"), Foreground = Brush("#A8984F"), IsHitTestVisible = false, Margin = new Thickness(4, 4, 0, 0) };
         _add.TextChanged += (_, _) => _addHint.Visibility = _add.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        _add.KeyDown += (_, e) =>
+        // 回车保存，Shift+回车换行
+        _add.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Enter || _add.Text.Trim().Length == 0 || MemoStore.I.Find(ListId) is not { } l) return;
-            l.Items.Add(new MemoItem { Text = _add.Text.Trim() });
+            if (e.Key != Key.Enter || (Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+            e.Handled = true;
+            if (_add.Text.Trim().Length == 0 || MemoStore.I.Find(ListId) is not { } l) return;
+            l.Items.Add(new MemoItem { Text = MemoStore.Clean(_add.Text) });
             _add.Text = "";
             MemoStore.I.Save();
         };
