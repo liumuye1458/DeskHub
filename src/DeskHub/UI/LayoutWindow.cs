@@ -18,7 +18,7 @@ public sealed class LayoutWindow : Window
     {
         _c = c;
         Title = L.T("布局");
-        Width = 640; Height = 500; MinWidth = 520; MinHeight = 360;
+        Width = 760; Height = 520; MinWidth = 600; MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Background = Brushes.White;
         FontFamily = (FontFamily)Application.Current.FindResource("UiFont"); FontSize = 13;
         Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/Assets/app.ico"));
@@ -29,7 +29,8 @@ public sealed class LayoutWindow : Window
         bar.Children.Add(Btn(L.T("导入…"), false, Import));
         var hint = new TextBlock
         {
-            Text = L.T("把现在分区、时钟、工具条的摆法存起来，随时一键切换。导出的文件可以拷到别的电脑上导入，屏幕大小不同会按比例换算。换布局前会自动存一份“换布局之前的样子”，换错了能切回来。"),
+            Text = L.T("把现在分区、时钟、工具条的摆法存起来，随时一键切换。导出的文件可以拷到别的电脑上导入，屏幕大小不同会按比例换算。换布局前会自动存一份“换布局之前的样子”，换错了能切回来。") + Environment.NewLine
+                + L.F("现在的显示器：{0}。点“绑定当前显示器”，以后一接上这种组合就自动换成那套布局；没绑定的，换屏时按比例照搬你最近调整过的摆法。", DeskController.DescribeSig(_c.CurrentSig)),
             Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 0, 16, 10), FontSize = 12.5,
         };
         var root = new DockPanel();
@@ -68,6 +69,10 @@ public sealed class LayoutWindow : Window
         var g = new DockPanel();
         var acts = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         acts.Children.Add(Btn(L.T("换成这个"), true, () => Apply(s), 6));
+        bool bound = s.BindSig.Length > 0 && s.BindSig == _c.CurrentSig;
+        var bind = Btn(bound ? L.T("取消绑定") : L.T("绑定当前显示器"), false, () => { _c.BindLayout(s, !bound); Build(); }, 6);
+        bind.ToolTip = L.T("绑定后：每次接上现在这种显示器组合，就自动换成这套布局");
+        acts.Children.Add(bind);
         acts.Children.Add(Btn(L.T("导出…"), false, () => Export(s), 6));
         acts.Children.Add(Btn(L.T("删除"), false, () => { _c.Cfg.SavedLayouts.Remove(s); _c.Cfg.Save(); Build(); }, 0));
         DockPanel.SetDock(acts, Dock.Right);
@@ -79,8 +84,15 @@ public sealed class LayoutWindow : Window
         info.Children.Add(new TextBlock
         {
             Text = L.F("{0:yyyy-MM-dd HH:mm} 保存 · {1} 个分区 · 屏幕 {2:0}×{3:0}", s.Saved, fences, s.Profile.WaW, s.Profile.WaH),
-            FontSize = 12, Foreground = Brushes.Gray, Margin = new Thickness(0, 3, 0, 0),
+            FontSize = 12, Foreground = Brushes.Gray, Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
         });
+        if (s.BindSig.Length > 0)
+            info.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0xE9, 0xF8, 0xEF)), CornerRadius = new CornerRadius(3), Padding = new Thickness(6, 1, 6, 2),
+                Margin = new Thickness(0, 5, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+                Child = new TextBlock { Text = L.F("🔗 接 {0} 时自动用", DeskController.DescribeSig(s.BindSig)), FontSize = 11.5, Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48)) },
+            });
         g.Children.Add(info);
         return new Border { Child = g, Padding = new Thickness(8, 10, 8, 10), BorderBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0)), BorderThickness = new Thickness(0, 0, 0, 1) };
     }

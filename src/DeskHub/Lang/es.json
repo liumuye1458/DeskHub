@@ -576,5 +576,13 @@
  "还没有保存过布局。摆好以后点“＋ 保存当前布局”。": "Aún no hay diseños guardados. Colócalo todo y pulsa \"＋ Guardar diseño actual\".",
  "这不是布局文件": "No es un archivo de diseño",
  "＋ 保存当前布局…": "＋ Guardar diseño actual…",
- "（自动）换布局之前的样子": "(auto) Antes del último cambio"
+ "（自动）换布局之前的样子": "(auto) Antes del último cambio",
+ "单屏 {0}": "Una pantalla {0}",
+ "{0} 块屏：{1}": "{0} pantallas: {1}",
+ "（自动）{0} 之前的摆法": "(auto) Disposición anterior en {0}",
+ "取消绑定": "Desvincular",
+ "绑定当前显示器": "Vincular a las pantallas actuales",
+ "绑定后：每次接上现在这种显示器组合，就自动换成这套布局": "Una vez vinculado, este diseño se aplica solo cada vez que se conecte esta combinación de pantallas",
+ "🔗 接 {0} 时自动用": "🔗 Se aplica solo con {0}",
+ "现在的显示器：{0}。点“绑定当前显示器”，以后一接上这种组合就自动换成那套布局；没绑定的，换屏时按比例照搬你最近调整过的摆法。": "Pantallas actuales: {0}. Pulsa \"Vincular a las pantallas actuales\" para que ese diseño se aplique siempre con esta combinación; si no, al cambiar de pantalla se escala la última disposición que ajustaste."
 }

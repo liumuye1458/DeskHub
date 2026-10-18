@@ -29,6 +29,7 @@ public sealed class DeskController : IFenceHost
     readonly DispatcherTimer _saveSoon = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(2) };
     readonly DispatcherTimer _displaySettle = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.5) };
     bool _displayBusy;
+    readonly DispatcherTimer _displayPoll = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(3) };
     readonly DispatcherTimer _archiveSoon = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(2) };
     DateTime _archiveAskedDay = DateTime.MinValue;
     uint _taskbarCreated;
@@ -55,6 +56,14 @@ public sealed class DeskController : IFenceHost
         _displaySettle.Tick += (_, _) => { _displaySettle.Stop(); _displayBusy = false; OnDisplayStable(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanging += (_, _) => _ui.BeginInvoke(DisplayChanging);
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _ui.BeginInvoke(DisplayChanging);
+        // 兜底：系统通知偶尔会漏（或者来得太早，读到的还是旧屏幕），每 3 秒直接问一次系统现在接了哪些屏
+        _displayPoll.Tick += (_, _) =>
+        {
+            if (_displayBusy || _fakeSig != null) return;
+            var now = DisplaySig();
+            if (now != Cfg.LayoutSig) { Log($"定时检查发现屏幕变了：{Cfg.LayoutSig} → {now}"); DisplayChanging(); }
+        };
+        _displayPoll.Start();
     }
 
     // ================= 启动 / 退出 =================
@@ -83,7 +92,8 @@ public sealed class DeskController : IFenceHost
         if (Cfg.HideSystemIcons && !Sandbox) DesktopHost.HideSystemIcons();
         Refresh();
         // 启动时遇到没见过的显示器组合：换算出的布局再对齐一遍、拉回屏幕内
-        if (_tidyAfterStart) _ui.BeginInvoke(DispatcherPriority.Background, () => { TidyQuiet(); EnsureOnScreen(); });
+        // 关着的时候换过屏：窗口都摆出来以后按换屏规则切一次
+        if (_tidyAfterStart) _ui.BeginInvoke(DispatcherPriority.Background, OnDisplayStable);
         ScheduleMidnight();
         _archiveSoon.Start(); // 开机两分钟后再检查归档，不和开机抢资源
     }
@@ -259,13 +269,42 @@ public sealed class DeskController : IFenceHost
     {
         try
         {
-            var s = System.Windows.Forms.Screen.PrimaryScreen;
-            if (s == null || SystemParameters.PrimaryScreenWidth <= 0) return SystemParameters.WorkArea;
-            double k = s.Bounds.Width / SystemParameters.PrimaryScreenWidth; // 物理像素 / 设备无关像素
-            var w = s.WorkingArea;
+            var p = Monitors().FirstOrDefault(m => m.Primary);
+            if (p.Dpi == 0) return SystemParameters.WorkArea;
+            double k = p.Dpi / 96.0; // 物理像素 / 设备无关像素
+            var w = p.Work;
             return new Rect(w.X / k, w.Y / k, w.Width / k, w.Height / k);
         }
         catch { return SystemParameters.WorkArea; }
+    }
+
+    // 直接问系统（不用 Forms.Screen / SystemParameters：它们有缓存，换屏的那一刻可能还是旧值）
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct RECT { public int L, T, R, B; }
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+    delegate bool MonitorEnumProc(IntPtr hMon, IntPtr hdc, IntPtr rect, IntPtr data);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc proc, IntPtr data);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMon, ref MONITORINFO mi);
+    [System.Runtime.InteropServices.DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr hMon, int type, out uint dpiX, out uint dpiY);
+
+    /// <summary>现在接着的每块屏：位置大小、工作区（物理像素）、是不是主屏、缩放（DPI）。</summary>
+    static List<(Rect Bounds, Rect Work, bool Primary, uint Dpi)> Monitors()
+    {
+        var list = new List<(Rect, Rect, bool, uint)>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (h, _, _, _) =>
+        {
+            var mi = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+            if (GetMonitorInfo(h, ref mi))
+            {
+                if (GetDpiForMonitor(h, 0, out var dx, out _) != 0) dx = 96;
+                list.Add((new Rect(mi.rcMonitor.L, mi.rcMonitor.T, mi.rcMonitor.R - mi.rcMonitor.L, mi.rcMonitor.B - mi.rcMonitor.T),
+                          new Rect(mi.rcWork.L, mi.rcWork.T, mi.rcWork.R - mi.rcWork.L, mi.rcWork.B - mi.rcWork.T),
+                          (mi.dwFlags & 1) != 0, dx));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return list;
     }
 
     /// <summary>
@@ -276,9 +315,13 @@ public sealed class DeskController : IFenceHost
     string DisplaySig()
     {
         if (_fakeSig != null) return _fakeSig;
-        var screens = System.Windows.Forms.Screen.AllScreens.OrderBy(s => s.Bounds.X).ThenBy(s => s.Bounds.Y)
+        var mons = Monitors();
+        if (mons.Count == 0) return Cfg.LayoutSig; // 屏幕正在切换，什么都读不到：当没变
+        var screens = mons.OrderBy(s => s.Bounds.X).ThenBy(s => s.Bounds.Y)
             .Select(s => $"{(s.Primary ? "*" : "")}{s.Bounds.X},{s.Bounds.Y},{s.Bounds.Width}x{s.Bounds.Height}");
-        return string.Join("|", screens) + $"@{SystemParameters.PrimaryScreenWidth:0}x{SystemParameters.PrimaryScreenHeight:0}";
+        var p = mons.FirstOrDefault(m => m.Primary);
+        double k = p.Dpi > 0 ? p.Dpi / 96.0 : 1;
+        return string.Join("|", screens) + $"@{p.Bounds.Width / k:0}x{p.Bounds.Height / k:0}";
     }
 
     LayoutProfile NewProfile(Dictionary<string, FenceLayout> items)
@@ -287,25 +330,23 @@ public sealed class DeskController : IFenceHost
         return new LayoutProfile { WaX = wa.X, WaY = wa.Y, WaW = wa.Width, WaH = wa.Height, Items = items, Used = DateTime.Now };
     }
 
-    /// <summary>启动时：用这种显示器组合存过的布局；没存过就从上次用的那套换算一套。</summary>
+    /// <summary>
+    /// 启动时：先用上次关掉时的那套布局把窗口摆出来，窗口都建好以后再看屏幕变没变（关着的时候拔插过），
+    /// 变了就按换屏的规则切（见 OnDisplayStable）。第一次用：算作现在这种组合的。
+    /// </summary>
     void InitProfiles()
     {
         var sig = DisplaySig();
-        if (Cfg.Layouts.Count == 0)
+        if (Cfg.Layouts.Count == 0 || !Cfg.Layouts.ContainsKey(Cfg.LayoutSig))
         {
-            // 老版本只有一套布局：算作现在这种组合的
-            Cfg.Layouts[sig] = NewProfile(Cfg.Layout);
+            if (!Cfg.Layouts.ContainsKey(sig)) Cfg.Layouts[sig] = NewProfile(Cfg.Layouts.Count == 0 ? Cfg.Layout : Derive(Cfg.Layouts.Values.OrderByDescending(p => p.Edited).First()).Items);
+            Cfg.LayoutSig = sig;
         }
-        else if (!Cfg.Layouts.ContainsKey(sig))
-        {
-            var src = Cfg.Layouts.TryGetValue(Cfg.LayoutSig, out var last) ? last : Cfg.Layouts.Values.OrderByDescending(p => p.Used).First();
-            Cfg.Layouts[sig] = Derive(src);
-            _tidyAfterStart = true;
-        }
-        var p = Cfg.Layouts[sig];
+        foreach (var x in Cfg.Layouts.Values) if (x.Edited == default) x.Edited = x.Used;
+        var p = Cfg.Layouts[Cfg.LayoutSig];
         p.Used = DateTime.Now;
         Cfg.Layout = p.Items; // 同一份：之后拖动保存的就是这套
-        Cfg.LayoutSig = sig;
+        _tidyAfterStart = sig != Cfg.LayoutSig;
         Trim();
         Cfg.Save();
     }
@@ -318,23 +359,92 @@ public sealed class DeskController : IFenceHost
         _displaySettle.Start();
     }
 
-    /// <summary>屏幕稳定后：换到这种组合的那套布局（没有就换算一套），保证都在屏幕内。</summary>
+    /// <summary>
+    /// 屏幕稳定后换布局，按这个顺序选：
+    /// ① 这种显示器组合绑定了某套保存的布局 → 用它；
+    /// ② 在这种组合上调整过、而且比别的屏上的调整更新 → 用这里记下的；
+    /// ③ 否则按比例照搬最近调整过的那套（你在大屏上改了摆法，笔记本上也跟着变），再自动对齐。
+    /// 最后：不压住时钟、都在屏幕里。
+    /// </summary>
     void OnDisplayStable()
     {
-        var sig = DisplaySig();
-        if (sig == Cfg.LayoutSig) { EnsureOnScreen(); return; }
-        // 先把当前这套记下来（就是 Cfg.Layout，拖动时已存），再切换
-        var from = Cfg.Layouts.TryGetValue(Cfg.LayoutSig, out var cur) ? cur : NewProfile(Cfg.Layout);
-        bool fresh = !Cfg.Layouts.TryGetValue(sig, out var p);
-        if (fresh) { p = Derive(from); Cfg.Layouts[sig] = p; }
-        p!.Used = DateTime.Now;
+        try
+        {
+            var sig = DisplaySig();
+            if (sig == Cfg.LayoutSig) { ClearClock(); EnsureOnScreen(); return; }
+            var how = SwitchTo(sig);
+            Log($"显示器变化 → {how}：{sig}  工作区 {WA}");
+        }
+        catch (Exception ex) { Log("换布局出错：" + ex); try { EnsureOnScreen(); } catch { } }
+    }
+
+    string SwitchTo(string sig)
+    {
+        if (Cfg.Layouts.TryGetValue(Cfg.LayoutSig, out var cur)) cur.Items = Cfg.Layout;
+        var latest = Cfg.Layouts.Where(kv => kv.Key != sig).Select(kv => kv.Value).OrderByDescending(x => x.Edited).FirstOrDefault()
+                     ?? NewProfile(Cfg.Layout);
+        Cfg.Layouts.TryGetValue(sig, out var p);
+        var bound = Cfg.SavedLayouts.FirstOrDefault(s => s.BindSig == sig);
+        string how;
+        bool tidy;
+        if (bound != null)
+        {
+            p ??= NewProfile(new());
+            how = $"用绑定的布局“{bound.Name}”";
+            tidy = false;
+        }
+        else if (p != null && p.Edited >= latest.Edited)
+        {
+            how = "用这种组合上次调整的布局";
+            tidy = false;
+        }
+        else
+        {
+            // 这种组合上以前手动调过：换算前先留一份，想要回来可以在“布局”里换回或绑定
+            if (p != null && p.Items.Count > 0)
+            {
+                var old = new SavedLayout
+                {
+                    Name = L.F("（自动）{0} 之前的摆法", DescribeSig(sig)), Saved = p.Edited == default ? p.Used : p.Edited, Profile = p,
+                    Fences = Cfg.CustomFences.Select(c => new CustomFence { Id = c.Id, Title = c.Title }).ToList(),
+                };
+                Cfg.SavedLayouts.RemoveAll(x => x.Name == old.Name);
+                Cfg.SavedLayouts.Add(old);
+            }
+            var keepEdited = p?.Edited ?? default;
+            p = Derive(latest);
+            p.Edited = keepEdited; // 换算出来的不算你调整过
+            how = "按比例照搬最近调整的布局，并自动对齐";
+            tidy = true;
+        }
+        p.Used = DateTime.Now;
+        Cfg.Layouts[sig] = p;
         Cfg.Layout = p.Items;
         Cfg.LayoutSig = sig;
         Trim();
-        ApplyProfile();
-        if (fresh) TidyQuiet();
+        if (bound != null) ApplySavedCore(bound, out tidy);
+        else ApplyProfile();
+        if (tidy) TidyQuiet(); else ClearClock();
         EnsureOnScreen();
-        Log($"显示器变化 → {(fresh ? "新组合，已按比例换算" : "用这种组合存过的布局")}：{sig}");
+        Cfg.Save();
+        return how;
+    }
+
+    /// <summary>你手动调整了布局：记下时间（换屏时跟着最新的走）。</summary>
+    void Touch()
+    {
+        if (Cfg.Layouts.TryGetValue(Cfg.LayoutSig, out var p)) p.Edited = DateTime.Now;
+    }
+
+    /// <summary>现在接着的显示器组合（绑定布局用）。</summary>
+    public string CurrentSig => Cfg.LayoutSig;
+
+    /// <summary>把显示器组合的标识写成人看得懂的话，例如“2 块屏：3840×2160 + 2560×1600”。</summary>
+    public static string DescribeSig(string sig)
+    {
+        if (string.IsNullOrEmpty(sig)) return "";
+        var screens = sig.Split('@')[0].Split('|').Select(s => s.TrimStart('*').Split(',').Last().Replace("x", "×")).ToList();
+        return screens.Count == 1 ? L.F("单屏 {0}", screens[0]) : L.F("{0} 块屏：{1}", screens.Count, string.Join(" + ", screens));
     }
 
     /// <summary>按当前这套布局把所有窗口摆好。</summary>
@@ -364,7 +474,7 @@ public sealed class DeskController : IFenceHost
                 items[k] = new FenceLayout
                 {
                     X = wa.Left + rx * sx, Y = wa.Top + ry * sy,
-                    W = Math.Max(160, l.W * sx), H = Math.Max(90, l.H * sy),
+                    W = Math.Max(200, l.W * sx), H = Math.Max(140, l.H * sy), // 至少放得下一行图标
                 };
             }
             else
@@ -380,19 +490,23 @@ public sealed class DeskController : IFenceHost
     /// <summary>换算后对齐一遍（缝宽用你原来的，不重新学）。时钟不跟着缩小，先让压到时钟的分区往下让。</summary>
     void TidyQuiet()
     {
-        if (_clock != null)
-        {
-            _clock.UpdateLayout();
-            var c = new Rect(_clock.Left, _clock.Top, _clock.ActualWidth, _clock.ActualHeight);
-            foreach (var (k, f) in _fences)
-            {
-                var r = new Rect(f.Left, f.Top, f.Width, f.Height);
-                if (!r.IntersectsWith(c)) continue;
-                double top = c.Bottom + Cfg.ArrangeGap;
-                Apply(k, f, new Rect(r.X, top, r.Width, Math.Max(90, r.Bottom - top)));
-            }
-        }
+        ClearClock();
         try { Arrange(false, CaptureLayout(), Rect.Empty, learnGap: false); } catch (Exception ex) { Log("换算后对齐失败：" + ex.Message); }
+    }
+
+    /// <summary>压住时钟的分区往下让（时钟多了一行字、换了屏都可能压住）。</summary>
+    void ClearClock()
+    {
+        if (_clock == null) return;
+        _clock.UpdateLayout();
+        var c = new Rect(_clock.Left, _clock.Top, _clock.ActualWidth, _clock.ActualHeight);
+        foreach (var (k, f) in _fences)
+        {
+            var r = new Rect(f.Left, f.Top, f.Width, f.Height);
+            if (!r.IntersectsWith(c)) continue;
+            double top = c.Bottom + Cfg.ArrangeGap;
+            Apply(k, f, new Rect(r.X, top, r.Width, Math.Max(140, r.Bottom - top)));
+        }
     }
 
     /// <summary>所有分区、时钟都完整地放在主屏工作区里（比工作区还大的先缩小）。不删你的摆法。</summary>
@@ -465,6 +579,23 @@ public sealed class DeskController : IFenceHost
     public void ApplySaved(SavedLayout s)
     {
         var before = CaptureSaved(AutoBackupName);
+        before.BindSig = Cfg.SavedLayouts.FirstOrDefault(x => x.Name == AutoBackupName)?.BindSig ?? "";
+        ApplySavedCore(s, out var tidy);
+        if (tidy) TidyQuiet(); else ClearClock();
+        EnsureOnScreen();
+        Touch();
+        if (s.Name != before.Name)
+        {
+            Cfg.SavedLayouts.RemoveAll(x => x.Name == before.Name);
+            Cfg.SavedLayouts.Add(before);
+        }
+        Cfg.Save();
+        Refresh();
+    }
+
+    /// <summary>把一套保存的布局摆上（缺的自定义分区建出来）。屏幕大小和保存时不一样（差 2% 以上）时 tidy=true，需要再对齐。</summary>
+    void ApplySavedCore(SavedLayout s, out bool tidy)
+    {
         var map = new Dictionary<string, string>();
         foreach (var cf in s.Fences)
         {
@@ -479,14 +610,16 @@ public sealed class DeskController : IFenceHost
         var derived = Derive(s.Profile);
         foreach (var (k, l) in derived.Items) Cfg.Layout[map.TryGetValue(k, out var k2) ? k2 : k] = l;
         ApplyProfile();
-        EnsureOnScreen();
-        if (s.Name != before.Name)
-        {
-            Cfg.SavedLayouts.RemoveAll(x => x.Name == before.Name);
-            Cfg.SavedLayouts.Add(before);
-        }
+        var wa = WA;
+        tidy = s.Profile.WaW <= 0 || Math.Abs(wa.Width / s.Profile.WaW - 1) > 0.02 || Math.Abs(wa.Height / Math.Max(1, s.Profile.WaH) - 1) > 0.02;
+    }
+
+    /// <summary>绑定 / 取消绑定：这套布局和现在的显示器组合。一种组合只绑一套。</summary>
+    public void BindLayout(SavedLayout s, bool bind)
+    {
+        foreach (var x in Cfg.SavedLayouts) if (x.BindSig == Cfg.LayoutSig) x.BindSig = "";
+        s.BindSig = bind ? Cfg.LayoutSig : "";
         Cfg.Save();
-        Refresh();
     }
 
     sealed class LayoutFile
@@ -515,6 +648,7 @@ public sealed class DeskController : IFenceHost
 
     public void ResetLayout()
     {
+        Touch();
         Cfg.Layout.Clear();
         foreach (var (k, f) in _fences) Place(f, k);
         if (_clock != null) Place(_clock, "clock");
@@ -536,10 +670,11 @@ public sealed class DeskController : IFenceHost
     public Dictionary<string, Rect> CaptureLayout() =>
         ArrangeTargets().ToDictionary(t => t.Key, t => new Rect(t.W.Left, t.W.Top, t.W.ActualWidth, t.W.ActualHeight));
 
-    public void RestoreLayout(Dictionary<string, Rect> saved)
+    public void RestoreLayout(Dictionary<string, Rect> saved, bool touch = true)
     {
         foreach (var (k, w) in ArrangeTargets())
             if (saved.TryGetValue(k, out var r)) Apply(k, w, r);
+        if (touch) Touch();
         Cfg.Save();
     }
 
@@ -553,10 +688,11 @@ public sealed class DeskController : IFenceHost
     /// <summary>auto=false 对齐你现有的摆法；auto=true 按推荐方案重排。都以 from（排列前的样子）为起点。</summary>
     public void Arrange(bool auto, Dictionary<string, Rect> from, Rect avoid, bool learnGap = true)
     {
+        if (learnGap) Touch(); // 你点的排列（自动对齐不算）
         var wa = WA;
         var targets = ArrangeTargets();
         // 先按排列前的样子摆回去，量出每个分区标题栏、标签页占多少地方，再算
-        RestoreLayout(from);
+        RestoreLayout(from, touch: learnGap);
         // 第二遍：大小变了以后标签页可能换行，重新量一次再算
         for (int pass = 0; pass < 2; pass++)
         {
@@ -622,6 +758,7 @@ public sealed class DeskController : IFenceHost
         var f = _fences.TryGetValue(keyOrTitle, out var ff) ? ff : _fences.Values.First(v => v.TitleText.Text == keyOrTitle);
         var wa = SystemParameters.WorkArea;
         Apply(f.Key, f, new Rect(wa.Left + x, wa.Top + y, w, h));
+        Touch(); // 模拟手动摆放
         f.UpdateLayout();
     }
 
@@ -629,6 +766,7 @@ public sealed class DeskController : IFenceHost
     {
         if (_displayBusy) return; // 屏幕正在变，窗口位置是乱的，不能存
         Cfg.Layout[key] = new FenceLayout { X = w.Left, Y = w.Top, W = w is FenceWindow ? w.Width : 0, H = w is FenceWindow ? w.Height : 0 };
+        Touch();
         Cfg.Save();
     }
 

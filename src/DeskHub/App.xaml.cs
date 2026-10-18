@@ -263,7 +263,8 @@ public partial class App : Application
                                 case "apply": _ctl!.ApplySaved(_ctl.Cfg.SavedLayouts.First(x => x.Name == arg2)); break;
                                 case "export": _ctl!.ExportLayout(_ctl.CaptureSaved("导出测试"), arg2); break;
                                 case "import": report.Add("import → " + _ctl!.ImportLayout(arg2).Name); break;
-                                case "list": report.AddRange(_ctl!.Cfg.SavedLayouts.Select(x => $"  {x.Name} items={x.Profile.Items.Count} fences={x.Fences.Count}")); break;
+                                case "list": report.AddRange(_ctl!.Cfg.SavedLayouts.Select(x => $"  {x.Name} items={x.Profile.Items.Count} fences={x.Fences.Count} bind={x.BindSig}")); break;
+                                case "bind": _ctl!.BindLayout(_ctl.Cfg.SavedLayouts.First(x => x.Name == arg2), true); break;
                                 case "shot": OpenLayouts(); await Task.Delay(400); RenderWindow(_layouts!, arg2); break;
                             }
                         }

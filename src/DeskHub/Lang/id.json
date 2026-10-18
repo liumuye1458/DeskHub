@@ -576,5 +576,13 @@
  "还没有保存过布局。摆好以后点“＋ 保存当前布局”。": "Belum ada tata letak tersimpan. Tata dulu, lalu klik \"＋ Simpan tata letak saat ini\".",
  "这不是布局文件": "Ini bukan file tata letak",
  "＋ 保存当前布局…": "＋ Simpan tata letak saat ini…",
- "（自动）换布局之前的样子": "(otomatis) Sebelum ganti terakhir"
+ "（自动）换布局之前的样子": "(otomatis) Sebelum ganti terakhir",
+ "单屏 {0}": "Satu layar {0}",
+ "{0} 块屏：{1}": "{0} layar: {1}",
+ "（自动）{0} 之前的摆法": "(otomatis) Susunan sebelumnya di {0}",
+ "取消绑定": "Lepas ikatan",
+ "绑定当前显示器": "Ikat ke layar saat ini",
+ "绑定后：每次接上现在这种显示器组合，就自动换成这套布局": "Jika diikat, tata letak ini dipakai otomatis setiap kali susunan layar ini terhubung",
+ "🔗 接 {0} 时自动用": "🔗 Otomatis di {0}",
+ "现在的显示器：{0}。点“绑定当前显示器”，以后一接上这种组合就自动换成那套布局；没绑定的，换屏时按比例照搬你最近调整过的摆法。": "Layar saat ini: {0}. Klik \"Ikat ke layar saat ini\" agar tata letak itu dipakai setiap susunan ini terhubung; jika tidak diikat, saat ganti layar susunan yang terakhir Anda ubah akan diskalakan."
 }

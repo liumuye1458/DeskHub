@@ -43,6 +43,8 @@ public sealed class LayoutProfile
     public double WaH { get; set; }
     public Dictionary<string, FenceLayout> Items { get; set; } = new();
     public DateTime Used { get; set; }
+    /// <summary>你最后一次在这套上手动调整（拖动、拉大小、排列、换布局）的时间。换屏时跟着最新调整过的那套走。</summary>
+    public DateTime Edited { get; set; }
 }
 
 /// <summary>存起来的一套布局（分区、时钟、工具条的位置 + 当时有哪些自定义分区），可以随时切回去，也能导出成文件。</summary>
@@ -52,6 +54,8 @@ public sealed class SavedLayout
     public DateTime Saved { get; set; } = DateTime.Now;
     public LayoutProfile Profile { get; set; } = new();
     public List<CustomFence> Fences { get; set; } = new();
+    /// <summary>绑定的显示器组合：每次接上这种组合，就自动换成这套布局。空 = 不绑定。</summary>
+    public string BindSig { get; set; } = "";
 }
 
 public sealed class AppConfig

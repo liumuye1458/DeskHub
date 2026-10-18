@@ -1,6 +1,6 @@
 <Project>
   <!-- 程序和安装包共用的版本号：发新版只改这里 -->
   <PropertyGroup>
-    <Version>0.7.0</Version>
+    <Version>0.7.1</Version>
   </PropertyGroup>
 </Project>

@@ -576,5 +576,13 @@
  "还没有保存过布局。摆好以后点“＋ 保存当前布局”。": "No saved layouts yet. Arrange things, then click \"＋ Save current layout\".",
  "这不是布局文件": "This is not a layout file",
  "＋ 保存当前布局…": "＋ Save current layout…",
- "（自动）换布局之前的样子": "(auto) Before last switch"
+ "（自动）换布局之前的样子": "(auto) Before last switch",
+ "单屏 {0}": "Single screen {0}",
+ "{0} 块屏：{1}": "{0} screens: {1}",
+ "（自动）{0} 之前的摆法": "(auto) Earlier arrangement on {0}",
+ "取消绑定": "Unbind",
+ "绑定当前显示器": "Bind to current displays",
+ "绑定后：每次接上现在这种显示器组合，就自动换成这套布局": "When bound, this layout is applied automatically whenever this display setup is connected",
+ "🔗 接 {0} 时自动用": "🔗 Auto-applied on {0}",
+ "现在的显示器：{0}。点“绑定当前显示器”，以后一接上这种组合就自动换成那套布局；没绑定的，换屏时按比例照搬你最近调整过的摆法。": "Current displays: {0}. Click \"Bind to current displays\" and that layout is applied whenever this setup is connected; otherwise, switching screens scales your most recently adjusted arrangement."
 }
