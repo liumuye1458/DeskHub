@@ -34,9 +34,9 @@ public sealed class ToolHub : IDisposable
     SearchWindow? _search;
     CalcWindow? _calc;
     DockWindow? _dock;
-    MemoWindow? _memo;
+    GuideManager? _memo;
     VaultWindow? _vault;
-    readonly Dictionary<string, NoteWindow> _notes = new();
+    readonly Dictionary<string, GuideWindow> _guides = new();
     readonly DispatcherTimer _remind = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(30) };
 
     public Dictionary<string, string> HotkeyErrors { get; private set; } = new();
@@ -65,12 +65,12 @@ public sealed class ToolHub : IDisposable
         _dock.Show();
         if (!_c.RestoreWindowPos("dock", _dock)) DockDefault();
 
-        // 备忘录：钉在桌面的便签 + 到点提醒
-        foreach (var l in Core.MemoStore.I.Lists.Where(l => l.Pinned)) ShowNote(l);
-        Core.MemoStore.Changed += SyncNotes;
-        _remind.Tick += (_, _) => CheckReminders();
+        // 备忘录：贴在屏幕上的指引便签。每 30 秒看一次：定时的到点出现、过了凌晨 5 点每天的重新出现
+        Core.GuideStore.Load();
+        Core.GuideStore.Changed += SyncGuides;
+        _remind.Tick += (_, _) => SyncGuides(flash: true);
         _remind.Start();
-        CheckReminders();
+        SyncGuides(flash: false);
         ApplyVaultApi();
 
         if (_sandbox) return; // 沙盒测试不抢真实的快捷键
@@ -135,7 +135,7 @@ public sealed class ToolHub : IDisposable
     {
         if (_memo == null)
         {
-            _memo = new MemoWindow(Pin);
+            _memo = new GuideManager(() => SystemParameters.WorkArea);
             _memo.Closed += (_, _) => { _memo = null; App.TrimMemory(); };
         }
         _memo.Popup();
@@ -247,58 +247,42 @@ public sealed class ToolHub : IDisposable
         return w.Current;
     }
 
-    // ---------------- 便签 / 提醒 ----------------
-    void Pin(Core.MemoList l, bool on)
-    {
-        l.Pinned = on;
-        Core.MemoStore.I.Save(); // 会触发 SyncNotes
-    }
+    // ---------------- 便签 ----------------
+    void SyncGuides() => SyncGuides(flash: false);
 
-    void SyncNotes()
+    /// <summary>让屏幕上的便签和数据一致：该显示的显示（到点出现的闪几下），该收起的收起，改过的重画。</summary>
+    void SyncGuides(bool flash)
     {
-        var lists = Core.MemoStore.I.Lists;
-        foreach (var id in _notes.Keys.ToList())
-            if (lists.FirstOrDefault(l => l.Id == id) is not { Pinned: true }) { _notes[id].Close(); _notes.Remove(id); _c.Cfg.Layout.Remove("note:" + id); }
-        foreach (var l in lists.Where(l => l.Pinned && !_notes.ContainsKey(l.Id))) ShowNote(l);
-    }
-
-    void ShowNote(Core.MemoList l)
-    {
-        var n = new NoteWindow(l, Memo, () => Pin(l, false));
-        var key = "note:" + l.Id;
-        n.Moved += () => _c.SaveWindowPos(key, n);
-        n.Show();
-        if (!_c.RestoreWindowPos(key, n)) NoteDefault(n);
-        _notes[l.Id] = n;
-    }
-
-    void NoteDefault(NoteWindow n)
-    {
-        var wa = SystemParameters.WorkArea;
-        int i = _notes.Values.ToList().IndexOf(n);
-        if (i < 0) i = _notes.Count;
-        n.Left = wa.Right - n.ActualWidth - 20 - i * 24;
-        n.Top = wa.Top + 30 + i * 24;
-    }
-
-    void CheckReminders()
-    {
-        var st = Core.MemoStore.I;
         var now = DateTime.Now;
-        var due = st.Due(now);
-        if (due.Count == 0) return;
-        foreach (var (l, it) in due)
+        foreach (var (id, w) in _guides.ToList())
         {
-            st.Fired(it, now);
-            new ReminderToast(l, it).Show();
+            var n = Core.GuideStore.Find(id);
+            bool keep = n != null && (Core.GuideStore.Visible(n, now) || w.CountingDown) && w.IsTopmostNote == n.Topmost;
+            if (!keep) { w.Close(); _guides.Remove(id); }
+            else w.Refresh(n!);
         }
-        st.Save();
+        foreach (var n in Core.GuideStore.D.Notes.Where(n => !_guides.ContainsKey(n.Id) && Core.GuideStore.Visible(n, now)))
+        {
+            var w = new GuideWindow(n, EditGuide, Memo);
+            w.Show();
+            _guides[n.Id] = w;
+            if (flash) w.Flash();
+        }
     }
+
+    void EditGuide(Core.GuideNote n)
+    {
+        if (GuideEditor.Ask(_memo, n, false)) Core.GuideStore.Save();
+    }
+
+    /// <summary>测试用：屏幕上的便签窗口。</summary>
+    public IReadOnlyDictionary<string, GuideWindow> Guides => _guides;
+    public GuideManager OpenManagerForTest() { Memo(); return _memo!; }
 
     public DockWindow? Dock => _dock;
 
-    /// <summary>桌面便签（排列时一起排）。</summary>
-    public IEnumerable<(string, Window)> NoteEntries() => _notes.Select(kv => ("note:" + kv.Key, (Window)kv.Value));
+    /// <summary>参与排列的便签：没有（指引便签是指着具体位置的，不跟着排列挪动）。</summary>
+    public IEnumerable<(string, Window)> NoteEntries() => Enumerable.Empty<(string, Window)>();
 
     // ================= 排列 =================
     // 连着点：第 1 下对齐你现在的摆法，第 2 下按推荐方案重排，第 3 下恢复原样（提示框还在时算"连着点"）。
@@ -342,7 +326,7 @@ public sealed class ToolHub : IDisposable
     }
 
     /// <summary>贴在桌面上的窗口（资源管理器重启后要重新贴）。</summary>
-    public IEnumerable<Window> DesktopWindows() => _notes.Values.Cast<Window>().Prepend(_dock!).Where(w => w != null);
+    public IEnumerable<Window> DesktopWindows() => _guides.Values.Where(g => !g.IsTopmostNote).Cast<Window>().Prepend(_dock!).Where(w => w != null);
 
     void DockDefault()
     {
@@ -361,14 +345,13 @@ public sealed class ToolHub : IDisposable
     }
 
     /// <summary>恢复默认布局时一起归位。</summary>
-    public void DefaultPositions() { DockDefault(); CalcDefault(); foreach (var n in _notes.Values) NoteDefault(n); }
+    public void DefaultPositions() { DockDefault(); CalcDefault(); }
 
     /// <summary>换了一套布局（换显示器组合）：工具条、计算器、便签按这套布局摆，没有记录的放默认位置。</summary>
     public void Relayout()
     {
         if (_dock != null && !_c.RestoreWindowPos("dock", _dock)) DockDefault();
         if (_calc != null && !_c.RestoreWindowPos("calc", _calc)) CalcDefault();
-        foreach (var (id, n) in _notes) if (!_c.RestoreWindowPos("note:" + id, n)) NoteDefault(n);
     }
 
     /// <summary>屏幕变了（拔掉外接屏等），跑到屏幕外的挪回来。</summary>
@@ -376,8 +359,6 @@ public sealed class ToolHub : IDisposable
     {
         if (_dock != null && !onScreen(new Rect(_dock.Left, _dock.Top, _dock.ActualWidth, 50))) { _c.Cfg.Layout.Remove("dock"); DockDefault(); }
         if (_calc != null && !onScreen(new Rect(_calc.Left, _calc.Top, _calc.ActualWidth, 50))) { _c.Cfg.Layout.Remove("calc"); CalcDefault(); }
-        foreach (var (id, n) in _notes)
-            if (!onScreen(new Rect(n.Left, n.Top, n.ActualWidth, 50))) { _c.Cfg.Layout.Remove("note:" + id); NoteDefault(n); }
     }
 
     public void Dispose()
@@ -387,8 +368,8 @@ public sealed class ToolHub : IDisposable
         _search?.Close();
         _calc?.Close();
         _remind.Stop();
-        Core.MemoStore.Changed -= SyncNotes;
-        foreach (var n in _notes.Values) n.Close();
+        Core.GuideStore.Changed -= SyncGuides;
+        foreach (var g in _guides.Values) g.Close();
         _memo?.Close();
         _vault?.Close();
         Core.SecretClipboard.ClearNow();

@@ -112,6 +112,11 @@
         <CheckBox x:Name="HideIcons" Style="{StaticResource Toggle}" Margin="0,8" Content="隐藏系统自带的桌面图标（由分区来显示；退出本工具后自动恢复）"/>
         <CheckBox x:Name="AutoStart" Style="{StaticResource Toggle}" Margin="0,8" Content="开机自动启动"/>
         <CheckBox x:Name="ShowSeconds" Style="{StaticResource Toggle}" Margin="0,8" Content="时钟显示秒（会每秒刷新一次）"/>
+        <StackPanel Orientation="Horizontal" Margin="0,8">
+          <TextBlock Text="时钟下面的一行字" VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <TextBox x:Name="ClockNote" Width="300" Height="28" MaxLength="40" VerticalContentAlignment="Center" Style="{StaticResource WinTextBox}"/>
+        </StackPanel>
+        <TextBlock Foreground="#999" FontSize="12" Margin="0,0,0,0" TextWrapping="Wrap" Text="例如店名、直播间口号。空着就不显示；最长和上面的时区那一行一样宽，超出的显示省略号。"/>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
         <Button x:Name="ResetLayout" Content="恢复默认布局" Style="{StaticResource BtnW}" HorizontalAlignment="Left" Margin="0,18,0,0"/>
       </StackPanel>

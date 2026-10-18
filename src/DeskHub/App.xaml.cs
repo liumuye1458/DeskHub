@@ -241,6 +241,8 @@ public partial class App : Application
                         report.AddRange(_ctl!.CaptureLayout().Select(kv => $"  {kv.Key}: {kv.Value.X:0},{kv.Value.Y:0} {kv.Value.Width:0}x{kv.Value.Height:0}"));
                         break;
                     case "settings": OpenSettings(parts[1]); break;
+                    case "clocknote": // clocknote 截图文件 文字（文字可含空格，空 = 清掉）
+                        _ctl!.Cfg.ClockNote = parts.Length > 2 ? parts[2] : ""; _ctl.ApplyTexts(); await Task.Delay(300); RenderWindow(_ctl.Clock!, parts[1]); break;
                     case "winshot": // 把设置窗口画成图片
                         if (_settings is { } sw)
                         {
@@ -360,39 +362,42 @@ public partial class App : Application
                             }
                         }
                         break;
-                    case "memo": // memo 子命令
+                    case "guide": // guide 子命令（备忘录便签）
                         {
-                            var st = Core.MemoStore.I;
                             var sub = parts[1];
                             var arg = parts.Length > 2 ? parts[2] : "";
+                            var D = Core.GuideStore.D;
                             switch (sub)
                             {
-                                case "add": // add 清单序号|文字|优先级|提醒分钟(可空)|重复
-                                    var f = arg.Split('|');
-                                    var mi = new Core.MemoItem { Text = f[1], Priority = int.Parse(f[2]) };
-                                    if (f.Length > 3 && f[3].Length > 0) mi.Remind = DateTime.Now.AddMinutes(double.Parse(f[3]));
-                                    if (f.Length > 4) mi.Repeat = f[4];
-                                    st.Lists[int.Parse(f[0])].Items.Add(mi); st.Save();
-                                    break;
-                                case "done": st.SetDone(st.Lists[0].Items.First(i => !i.Done), true); st.Save(); break;
-                                case "pin": st.Lists[int.Parse(arg)].Pinned = true; st.Save(); break;
-                                case "open": _tools!.Memo(); break;
-                                case "type": // type 文本文件：把一段（多行）文字放进添加框，再按回车
+                                case "add": // add 文字|daily(1/0)|topmost(1/0)|定时|流程|步|x,y,w|tipX,tipY
                                     {
-                                        var text = File.ReadAllText(arg);
-                                        var mw = Windows.OfType<MemoWindow>().First();
-                                        mw.AddBox.Focus(); mw.AddBox.SelectedText = text;
-                                        report.Add($"memo type: 原文 {text.Length} 字 / 框里 {mw.AddBox.Text.Length} 字");
-                                        var ke = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(mw.AddBox)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
-                                        mw.AddBox.RaiseEvent(ke);
-                                        var saved = st.Lists.SelectMany(l => l.Items).OrderBy(i => i.Created).Last();
-                                        report.Add($"memo saved: {saved.Text.Length} 字，{saved.Text.Split('\n').Length} 段，框已清空={mw.AddBox.Text.Length == 0}");
+                                        var f = arg.Split('|');
+                                        var n = new Core.GuideNote { Text = f[0].Replace("\\n", "\n"), Daily = f[1] == "1", Topmost = f[2] == "1", ShowAt = f[3], Flow = f[4], Step = f[5].Length > 0 ? int.Parse(f[5]) : 0 };
+                                        var xy = f[6].Split(',').Select(double.Parse).ToArray(); n.X = xy[0]; n.Y = xy[1]; n.W = xy[2];
+                                        if (f.Length > 7 && f[7].Length > 0) { var t = f[7].Split(',').Select(double.Parse).ToArray(); n.TipX = t[0]; n.TipY = t[1]; } else n.Arrow = false;
+                                        if (f.Length > 8) n.Color = f[8];
+                                        D.Notes.Add(n); Core.GuideStore.Save();
                                     }
                                     break;
-                                case "shot": await Task.Delay(300); RenderWindow(Windows.OfType<MemoWindow>().First(), arg); break;
-                                case "noteshot": await Task.Delay(300); RenderWindow(Windows.OfType<NoteWindow>().First(), arg); break;
-                                case "toastshot": await Task.Delay(300); RenderWindow(Windows.OfType<ReminderToast>().First(), arg); report.Add("toasts: " + Windows.OfType<ReminderToast>().Count()); break;
-                                case "dump": report.AddRange(st.Lists.SelectMany(l => l.Items.Select(i => $"  [{l.Name}] {(i.Done ? "x" : " ")} {i.Text} remind={i.Remind:MM-dd HH:mm} rep={i.Repeat} reminded={i.Reminded}"))); break;
+                                case "list":
+                                    report.AddRange(D.Notes.Select((n, i) => $"  [{i}] {Core.GuideStore.StateOf(n, DateTime.Now)} 窗口={_tools!.Guides.ContainsKey(n.Id)} {n.Text.Replace("\n", "/")} ok={n.OkDay} fin={n.Finished}"));
+                                    break;
+                                case "ok": Core.GuideStore.Ok(D.Notes[int.Parse(arg)]); break;
+                                case "click": // 模拟点 OK 按钮（走 3 秒倒计时）
+                                    {
+                                        var w = _tools!.Guides.TryGetValue(D.Notes[int.Parse(arg)].Id, out var gw) ? gw : throw new InvalidOperationException("这张便签现在没显示");
+                                        var btn = FindChild<System.Windows.Controls.Button>(w);
+                                        btn!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                                    }
+                                    break;
+                                case "geom": foreach (var gw2 in _tools!.Guides.Values) report.Add($"  win {gw2.Left:0},{gw2.Top:0} {gw2.Width:0}x{gw2.Height:0} actual {gw2.ActualWidth:0}x{gw2.ActualHeight:0} content {((FrameworkElement)gw2.Content).ActualWidth:0}x{((FrameworkElement)gw2.Content).ActualHeight:0} dpi {System.Windows.Media.VisualTreeHelper.GetDpi(gw2).DpiScaleX} wa {SystemParameters.WorkArea}"); break;
+                                case "lock": D.Locked = arg == "on"; Core.GuideStore.Save(); break;
+                                case "yesterday": foreach (var n in D.Notes.Where(n => n.OkDay != null)) n.OkDay = "2000-01-01"; Core.GuideStore.Save(); break;
+                                case "shot": await Task.Delay(300); RenderWindow(_tools!.Guides.TryGetValue(D.Notes[int.Parse(arg.Split(' ')[0])].Id, out var gsw) ? gsw : throw new InvalidOperationException("这张便签现在没显示"), arg.Split(' ', 2)[1]); break;
+                                case "manager": { var m = _tools!.OpenManagerForTest(); await Task.Delay(400); RenderWindow(m, arg); } break;
+                                case "editor": { var ed = new GuideEditor(D.Notes[0], false); ed.Show(); await Task.Delay(400); RenderWindow(ed, arg); ed.Close(); } break;
+                                case "export": Core.GuideStore.Export(arg, SystemParameters.WorkArea); break;
+                                case "import": report.Add("import → " + Core.GuideStore.Import(arg, new Rect(0, 0, 1280, 700), true)); break;
                             }
                         }
                         break;
@@ -444,6 +449,17 @@ public partial class App : Application
     }
 
     static Window Do(Action a, Func<Window> get) { a(); return get(); }
+
+    static T? FindChild<T>(DependencyObject d) where T : DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(d); i++)
+        {
+            var c = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
+            if (c is T t) return t;
+            if (FindChild<T>(c) is { } r) return r;
+        }
+        return null;
+    }
 
     static void RenderWindow(Window w, string file)
     {

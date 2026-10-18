@@ -22,6 +22,7 @@ public sealed class DeskController : IFenceHost
     readonly Dispatcher _ui;
     readonly Dictionary<string, FenceWindow> _fences = new();
     ClockWindow? _clock;
+    public ClockWindow? Clock => _clock;
     List<DesktopItem> _items = new();
     bool _firstRun;
     readonly DispatcherTimer _midnight = new(DispatcherPriority.Background);
@@ -60,7 +61,7 @@ public sealed class DeskController : IFenceHost
     public void Start()
     {
         InitProfiles();
-        _clock = new ClockWindow { ShowSeconds = Cfg.ShowSeconds };
+        _clock = new ClockWindow { ShowSeconds = Cfg.ShowSeconds, Note = Cfg.ClockNote };
         _clock.Moved += () => SaveLayout("clock", _clock);
         Place(_clock, "clock");
         _clock.SourceInitialized += (_, _) =>
@@ -188,7 +189,7 @@ public sealed class DeskController : IFenceHost
             ? L.F("{0} 天没碰的会移到 {1}", Cfg.ArchiveDays, Path.Combine(Cfg.ArchiveRoot, L.T("年-月"), L.T("事项")) + "\\")
             : L.T("自动归档已关闭"));
         foreach (var f in _fences.Values) f.Topics = Cfg.Topics;
-        if (_clock != null) { _clock.ShowSeconds = Cfg.ShowSeconds; _clock.Tick(); }
+        if (_clock != null) { _clock.ShowSeconds = Cfg.ShowSeconds; _clock.Note = Cfg.ClockNote; _clock.Tick(); }
     }
 
     // ================= 布局 =================

@@ -76,6 +76,8 @@ public sealed class AppConfig
     public bool AutoArchive { get; set; } = true;
     public bool HideSystemIcons { get; set; } = true;
     public bool ShowSeconds { get; set; }
+    /// <summary>时钟下面自己写的一行字（空 = 不显示）。</summary>
+    public string ClockNote { get; set; } = "";
 
     public List<TopicRule> Topics { get; set; } = DefaultTopics();
     /// <summary>当前显示器组合下的布局（就是 Layouts[LayoutSig].Items 那一份）。</summary>

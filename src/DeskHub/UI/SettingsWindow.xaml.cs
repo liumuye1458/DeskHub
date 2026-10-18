@@ -69,6 +69,7 @@ public partial class SettingsWindow : Window
         // 常规
         HideIcons.IsChecked = cfg.HideSystemIcons;
         ShowSeconds.IsChecked = cfg.ShowSeconds;
+        ClockNote.Text = cfg.ClockNote;
         // 语言：第一项"跟随系统"，其余用各自语言的名字显示（不懂当前语言也能找到自己的）
         LangBox.Items.Add(new ComboBoxItem { Content = L.T("跟随系统") + "（" + L.Languages.First(l => l.Code == L.FromSystem()).Name + "）", Tag = "" });
         foreach (var l in L.Languages) LangBox.Items.Add(new ComboBoxItem { Content = l.Name, Tag = l.Code });
@@ -186,6 +187,7 @@ public partial class SettingsWindow : Window
         cfg.ArchiveRoot = root;
         cfg.AutoArchive = AutoArchive.IsChecked == true;
         cfg.ShowSeconds = ShowSeconds.IsChecked == true;
+        cfg.ClockNote = string.Join(" ", ClockNote.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
         var newLang = (string)((ComboBoxItem)LangBox.SelectedItem).Tag;
         bool langChanged = newLang != cfg.Language;
         cfg.Language = newLang;

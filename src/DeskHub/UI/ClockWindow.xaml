@@ -9,5 +9,8 @@
     <TextBlock x:Name="TimeText" FontSize="56" FontWeight="Light" FontFamily="Segoe UI Light, Microsoft YaHei UI Light, Microsoft YaHei UI"/>
     <TextBlock x:Name="DateText" FontSize="14" Margin="2,6,0,0" Foreground="#F2F2F2"/>
     <TextBlock x:Name="ZoneText" FontSize="11.5" Margin="2,4,0,0" Foreground="#C0FFFFFF"/>
+    <!-- 自定义的一行：最宽不超过上面那行，超出的显示省略号 -->
+    <TextBlock x:Name="NoteText" FontSize="12.5" Margin="2,4,0,0" Foreground="#F2F2F2" Visibility="Collapsed"
+               TextTrimming="CharacterEllipsis" MaxWidth="{Binding ActualWidth, ElementName=ZoneText}"/>
   </StackPanel>
 </Window>

@@ -17,6 +17,8 @@ public partial class ClockWindow : Window
 {
     readonly DispatcherTimer _timer = new(DispatcherPriority.Background);
     public bool ShowSeconds { get; set; }
+    /// <summary>时钟下面自己写的一行字。</summary>
+    public string Note { get; set; } = "";
     public event Action? Moved;
 
     public ClockWindow()
@@ -77,6 +79,8 @@ public partial class ClockWindow : Window
             DateText.Text = c.DateTimeFormat.LongDatePattern.Contains("dddd") ? d : $"{d}  {now.ToString("dddd", c)}";
         }
         ZoneText.Text = L.F("跟随系统时区 · {0}", TimeZoneInfo.Local.DisplayName);
+        NoteText.Text = Note.Trim();
+        NoteText.Visibility = NoteText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // 对齐到下一个整分钟（或整秒），避免空转
         var next = ShowSeconds ? 1000 - now.Millisecond : (60 - now.Second) * 1000 - now.Millisecond;
