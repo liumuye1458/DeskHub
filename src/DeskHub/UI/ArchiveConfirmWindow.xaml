@@ -1,0 +1,35 @@
+<Window x:Class="DeskHub.UI.ArchiveConfirmWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="桌面工作台 · 归档确认" Width="720" Height="520" WindowStartupLocation="CenterScreen"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Background="White" Topmost="True"
+        Icon="pack://application:,,,/Assets/app.ico">
+  <Grid Margin="20,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel>
+      <TextBlock x:Name="Head" FontSize="15" FontWeight="Bold" Foreground="#222"/>
+      <TextBlock x:Name="Sub" Foreground="#888" Margin="0,6,0,12" TextWrapping="Wrap"/>
+    </StackPanel>
+    <ListView x:Name="List" Grid.Row="1" BorderBrush="#E8E8E8">
+      <ListView.View>
+        <GridView>
+          <GridViewColumn Header="文件" Width="300" DisplayMemberBinding="{Binding Name}"/>
+          <GridViewColumn Header="事项" Width="80" DisplayMemberBinding="{Binding Topic}"/>
+          <GridViewColumn Header="最后碰过" Width="100" DisplayMemberBinding="{Binding Last}"/>
+          <GridViewColumn Header="移到" Width="200" DisplayMemberBinding="{Binding To}"/>
+        </GridView>
+      </ListView.View>
+    </ListView>
+    <DockPanel Grid.Row="2" Margin="0,14,0,0">
+      <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+        <Button x:Name="Later" Content="以后再说" Style="{StaticResource BtnW}" MinWidth="88" IsCancel="True"/>
+        <Button x:Name="Ok" Content="确认归档" Style="{StaticResource BtnG}" MinWidth="88" Margin="8,0,0,0" IsDefault="True"/>
+      </StackPanel>
+      <TextBlock Text="确认这一次以后，到期的文件会自动归档，每次都能在“归档记录”里撤回。" Foreground="#999" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"/>
+    </DockPanel>
+  </Grid>
+</Window>

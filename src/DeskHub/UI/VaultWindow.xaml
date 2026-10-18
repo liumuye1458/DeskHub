@@ -1,0 +1,110 @@
+<Window x:Class="DeskHub.UI.VaultWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="密码箱" Width="1060" Height="680" MinWidth="880" MinHeight="520"
+        WindowStartupLocation="CenterScreen" FontFamily="{StaticResource UiFont}" FontSize="13"
+        Background="White" Foreground="#333" Icon="pack://application:,,,/Assets/app.ico"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <Window.Resources>
+    <Style x:Key="Pw" TargetType="PasswordBox">
+      <Setter Property="Height" Value="38"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="BorderBrush" Value="#DDDDDD"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="PasswordBox">
+            <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="5">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#07C255"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <!-- ========== 主界面 ========== -->
+    <Grid x:Name="MainPane" Visibility="Collapsed" Background="White">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Border BorderBrush="{StaticResource WinLine}" BorderThickness="0,0,0,1" Padding="14,10">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <TextBlock Text="闲置 5 分钟后自动锁定" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <Button x:Name="GenBtn" Content="密码生成器" Style="{StaticResource BtnW}" Margin="0,0,6,0"/>
+            <Button x:Name="ImportBtn" Content="智能识别" Style="{StaticResource BtnW}" Margin="0,0,6,0" ToolTip="粘贴一段文字，或打开 Word / Excel / 文本 / 截图，自动识别出账号密码"/>
+            <Button x:Name="MoreBtn" Content="更多 ▾" Style="{StaticResource BtnW}" Margin="0,0,6,0"/>
+            <Button x:Name="AddBtn" Content="＋ 新增" Style="{StaticResource BtnG}" Margin="0,0,6,0"/>
+            <Button x:Name="LockBtn" Content="立即锁定" Style="{StaticResource BtnW}"/>
+          </StackPanel>
+          <Grid Width="320" HorizontalAlignment="Left">
+            <TextBox x:Name="SearchBox" Style="{StaticResource WinTextBox}" Height="32" Padding="28,0,8,0" VerticalContentAlignment="Center"/>
+            <TextBlock Text="⌕" Foreground="#AAA" FontSize="16" Margin="10,0,0,1" VerticalAlignment="Center" IsHitTestVisible="False"/>
+            <TextBlock x:Name="SearchHint" Text="搜索服务名、网址、账号（Ctrl+F）" Foreground="#BBB" Margin="30,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+          </Grid>
+        </DockPanel>
+      </Border>
+
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="170"/>
+          <ColumnDefinition Width="300"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Background="{StaticResource WinSoft}" BorderBrush="{StaticResource WinLine}" BorderThickness="0,0,1,0">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="GroupList" Margin="8"/>
+          </ScrollViewer>
+        </Border>
+        <Border Grid.Column="1" BorderBrush="{StaticResource WinLine}" BorderThickness="0,0,1,0">
+          <Grid>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel x:Name="EntryList" Margin="6"/>
+            </ScrollViewer>
+            <TextBlock x:Name="ListEmpty" Foreground="#AAA" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Visibility="Collapsed"/>
+          </Grid>
+        </Border>
+        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="Detail" Margin="28,22,28,22"/>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+
+    <!-- ========== 锁定 / 第一次设置 ========== -->
+    <Grid x:Name="LockPane" Background="#F5F6F7">
+      <Border Background="White" CornerRadius="10" Width="400" Padding="36,32" HorizontalAlignment="Center" VerticalAlignment="Center" BorderBrush="#EAEAEA" BorderThickness="1">
+        <StackPanel>
+          <Border Width="56" Height="56" CornerRadius="28" Background="#E9F8EF" HorizontalAlignment="Center">
+            <Canvas Width="20" Height="20">
+              <Canvas.RenderTransform><ScaleTransform ScaleX="1.3" ScaleY="1.3" CenterX="10" CenterY="10"/></Canvas.RenderTransform>
+              <Rectangle Canvas.Left="3.5" Canvas.Top="8.5" Width="13" Height="9" RadiusX="1.5" RadiusY="1.5" Stroke="#07C255" StrokeThickness="1.6"/>
+              <Path Data="M6.5,8.5 V6 A3.5,3.5 0 0 1 13.5,6 V8.5" Stroke="#07C255" StrokeThickness="1.6"/>
+              <Ellipse Canvas.Left="8.6" Canvas.Top="11.6" Width="2.8" Height="2.8" Fill="#07C255"/>
+            </Canvas>
+          </Border>
+          <TextBlock x:Name="LockTitle" FontSize="18" FontWeight="Bold" Foreground="#222" HorizontalAlignment="Center" Margin="0,16,0,0"/>
+          <TextBlock x:Name="LockSub" Foreground="#999" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,18" LineHeight="20"/>
+          <PasswordBox x:Name="Pw1" Style="{StaticResource Pw}"/>
+          <TextBlock x:Name="Pw2Label" Text="再输一次" Foreground="#999" FontSize="12" Margin="0,10,0,4"/>
+          <PasswordBox x:Name="Pw2" Style="{StaticResource Pw}"/>
+          <TextBlock x:Name="LockErr" Foreground="#E5413C" Margin="0,10,0,0" TextWrapping="Wrap" MinHeight="18"/>
+          <Button x:Name="UnlockBtn" Style="{StaticResource BtnG}" Height="38" Margin="0,8,0,0" FontSize="14"/>
+          <TextBlock x:Name="RestoreLink" Text="从加密备份恢复…" Foreground="#07C255" Cursor="Hand" HorizontalAlignment="Center" Margin="0,14,0,0" FontSize="12"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- 复制提示 -->
+    <Border x:Name="Toast" Background="#E6222222" CornerRadius="6" Padding="16,8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28" Visibility="Collapsed" IsHitTestVisible="False">
+      <TextBlock x:Name="ToastText" Foreground="White"/>
+    </Border>
+  </Grid>
+</Window>

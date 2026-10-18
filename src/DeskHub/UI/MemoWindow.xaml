@@ -1,0 +1,40 @@
+<Window x:Class="DeskHub.UI.MemoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="备忘录" Width="880" Height="600" MinWidth="680" MinHeight="420"
+        WindowStartupLocation="CenterScreen" FontFamily="{StaticResource UiFont}" FontSize="13"
+        Background="White" Foreground="#333" Icon="pack://application:,,,/Assets/app.ico"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="190"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+    <Border Background="{StaticResource WinSoft}" BorderBrush="{StaticResource WinLine}" BorderThickness="0,0,1,0">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="ListPanel" Margin="8"/>
+      </ScrollViewer>
+    </Border>
+    <Grid Grid.Column="1" Background="White">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <DockPanel Margin="24,16,20,10">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button x:Name="PinBtn" Style="{StaticResource BtnW}" Margin="0,0,6,0"/>
+          <Button x:Name="ExportBtn" Content="导出" Style="{StaticResource BtnW}" ToolTip="把这个清单导出成文本文件"/>
+        </StackPanel>
+        <TextBlock x:Name="ListTitle" FontSize="18" FontWeight="Bold" Foreground="#222" VerticalAlignment="Center"/>
+      </DockPanel>
+      <Grid Grid.Row="1" Margin="24,0,20,8" x:Name="AddRow">
+        <TextBox x:Name="AddBox" Style="{StaticResource WinTextBox}" Height="36" Padding="10,0" VerticalContentAlignment="Center"/>
+        <TextBlock x:Name="AddHint" Text="＋ 添加待办，回车保存" Foreground="#AAA" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+      </Grid>
+      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="ItemPanel" Margin="18,0,16,16"/>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+</Window>

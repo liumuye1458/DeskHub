@@ -1,0 +1,99 @@
+<Window x:Class="DeskHub.UI.SearchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:DeskHub.UI"
+        Title="文件查找" Width="700" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" Topmost="True" FontFamily="{StaticResource UiFont}" FontSize="13"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <Window.Resources>
+    <DataTemplate DataType="{x:Type ui:SearchGroupVM}">
+      <TextBlock Text="{Binding Title}" Foreground="#999" FontSize="12" Margin="16,8,0,4"/>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type ui:SearchRowVM}">
+      <Border x:Name="row" Background="Transparent" Padding="16,7" Cursor="Hand">
+        <DockPanel>
+          <Image DockPanel.Dock="Left" Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+          <StackPanel DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center" MinWidth="70">
+            <TextBlock Text="{Binding SizeText}" Foreground="#999" FontSize="12" HorizontalAlignment="Right"/>
+            <TextBlock Text="{Binding TimeText}" Foreground="#999" FontSize="12" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+          </StackPanel>
+          <StackPanel VerticalAlignment="Center">
+            <ContentPresenter Content="{Binding NameBlock}"/>
+            <TextBlock Text="{Binding Where}" Foreground="#999" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}"/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <DataTemplate.Triggers>
+        <Trigger SourceName="row" Property="IsMouseOver" Value="True">
+          <Setter TargetName="row" Property="Background" Value="#F5F6F7"/>
+        </Trigger>
+        <DataTrigger Binding="{Binding Selected}" Value="True">
+          <Setter TargetName="row" Property="Background" Value="{StaticResource GreenSoft}"/>
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Border Margin="14" Background="White" CornerRadius="8" BorderBrush="#E3E3E3" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.28" Color="Black" RenderingBias="Performance"/>
+    </Border.Effect>
+    <StackPanel>
+      <!-- 搜索框 -->
+      <DockPanel Margin="18,12,14,10">
+        <Path DockPanel.Dock="Left" Data="M7,0 A7,7 0 1 1 6.99,0 Z M12,12 L17,17" Stroke="{StaticResource Green}" StrokeThickness="2.2"
+              Width="19" Height="19" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,12,0"/>
+        <Border DockPanel.Dock="Right" BorderBrush="#E3E3E3" BorderThickness="1" CornerRadius="3" Padding="6,1" VerticalAlignment="Center">
+          <TextBlock Text="Esc 关闭" Foreground="#999" FontSize="11"/>
+        </Border>
+        <Grid>
+          <TextBlock x:Name="Placeholder" Text="搜索电脑上的文件和文件夹（多个词用空格隔开）" Foreground="#BBB" FontSize="18" VerticalAlignment="Center" IsHitTestVisible="False"/>
+          <TextBox x:Name="Box" FontSize="18" BorderThickness="0" Background="Transparent" Foreground="#222" VerticalContentAlignment="Center" Padding="0,2"/>
+        </Grid>
+      </DockPanel>
+
+      <!-- 类型分组 -->
+      <Border x:Name="TabsBar" BorderBrush="#EEE" BorderThickness="0,1,0,1" Padding="12,6" Visibility="Collapsed">
+        <ItemsControl x:Name="Tabs">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border x:Name="t" CornerRadius="4" Padding="10,4" Margin="0,0,4,0" Background="Transparent" Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="n" Text="{Binding Name}" Foreground="#555"/>
+                  <TextBlock x:Name="c" Text="{Binding CountText}" Foreground="#AAA" FontSize="12" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Border>
+              <DataTemplate.Triggers>
+                <Trigger SourceName="t" Property="IsMouseOver" Value="True"><Setter TargetName="t" Property="Background" Value="#F5F6F7"/></Trigger>
+                <DataTrigger Binding="{Binding On}" Value="True">
+                  <Setter TargetName="t" Property="Background" Value="{StaticResource GreenSoft}"/>
+                  <Setter TargetName="n" Property="Foreground" Value="{StaticResource Green}"/>
+                  <Setter TargetName="n" Property="FontWeight" Value="SemiBold"/>
+                  <Setter TargetName="c" Property="Foreground" Value="{StaticResource Green}"/>
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+      <!-- 结果 -->
+      <ScrollViewer x:Name="Scroll" MaxHeight="470" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Focusable="False">
+        <ItemsControl x:Name="List" Focusable="False" Margin="0,2,0,6">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        </ItemsControl>
+      </ScrollViewer>
+      <TextBlock x:Name="Empty" Foreground="#AAA" Margin="18,18,18,22" HorizontalAlignment="Center" Visibility="Collapsed"/>
+
+      <!-- 底部提示 -->
+      <Border x:Name="Foot" Background="#FAFAFA" CornerRadius="0,0,8,8" BorderBrush="#EEE" BorderThickness="0,1,0,0" Padding="16,7" Visibility="Collapsed">
+        <DockPanel>
+          <TextBlock x:Name="Status" DockPanel.Dock="Right" Foreground="#AAA" FontSize="12"/>
+          <TextBlock Text="Enter 打开 · Ctrl+Enter 打开所在文件夹 · ↑↓ 选择 · 右键更多" Foreground="#AAA" FontSize="12"/>
+        </DockPanel>
+      </Border>
+    </StackPanel>
+  </Border>
+</Window>
