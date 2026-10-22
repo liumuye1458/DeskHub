@@ -127,22 +127,31 @@ static class DesktopHost
         Native.SetWinEventHook(Native.EVENT_OBJECT_UNCLOAKED, Native.EVENT_OBJECT_UNCLOAKED, IntPtr.Zero, _guardProc, 0, 0, Native.WINEVENT_OUTOFCONTEXT);
     }
 
-    /// <summary>有普通窗口（含最小化的）排在分区下面，就把分区压回最底。</summary>
+    // 输入法的候选框/组字窗口、IE 的隐藏窗口等：看着“可见”，其实不是程序界面，不跟它们较劲
+    static readonly HashSet<string> IgnoreClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "WorkerW", "MSCTFIME UI", "MSCTFIME Composition", "IME", "CiceroUIWndFrame", "Internet Explorer_Hidden",
+        "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+    };
+
+    /// <summary>有真正的程序窗口排在分区下面、而且和分区叠在一起（会被盖住），就把分区压回最底。</summary>
     static void KeepAtBottom()
     {
         _pinned.RemoveWhere(h => !Native.IsWindow(h));
         if (_pinned.Count == 0) return;
+        var rects = _pinned.Where(Native.IsWindowVisible).Select(h => { Native.GetWindowRect(h, out var r); return r; }).ToList();
         var ours = new List<IntPtr>();
         IntPtr under = IntPtr.Zero;
         var progman = Progman;
-        var cls = new StringBuilder(32);
+        var cls = new StringBuilder(64);
         Native.EnumWindows((h, _) =>
         {
             if (_pinned.Contains(h)) { if (Native.IsWindowVisible(h)) ours.Add(h); return true; }
-            if (ours.Count == 0 || h == progman || !Native.IsWindowVisible(h)) return true;
-            if (Native.GetWindow(h, Native.GW_OWNER) == progman) return true; // 别的桌面挂件
-            cls.Clear(); Native.GetClassName(h, cls, cls.Capacity);
-            if (cls.ToString() == "WorkerW") return true;                     // 壁纸层
+            if (h == progman) return false;                                       // 桌面后面的本来就被桌面挡着，不归我们管
+            if (ours.Count == 0 || under != IntPtr.Zero || !IsCoverable(h, progman, cls)) return true;
+            Native.GetWindowRect(h, out var r);
+            if (r.Right - r.Left < 40 || r.Bottom - r.Top < 40) return true;     // 太小的不是程序界面
+            if (!rects.Any(f => f.Left < r.Right && r.Left < f.Right && f.Top < r.Bottom && r.Top < f.Bottom)) return true; // 没和分区叠在一起，盖不住
             if (IsStubborn(h)) return true;
             under = h;
             return true;
@@ -150,7 +159,20 @@ static class DesktopHost
         if (under == IntPtr.Zero) return;
         Note(under);
         foreach (var h in ours) SendToBottom(h); // 从上往下逐个压底，原来的上下顺序保持不变
-        if (!Native.IsIconic(under)) LogUnder(under); // 最小化的压在下面看不见，不记
+        LogUnder(under);
+    }
+
+    /// <summary>这个窗口是不是“会被分区盖住的程序界面”。</summary>
+    static bool IsCoverable(IntPtr h, IntPtr progman, StringBuilder cls)
+    {
+        if (!Native.IsWindowVisible(h) || Native.IsIconic(h)) return false;   // 最小化的还原时系统会提到最上面；万一没提，还原事件会触发检查
+        if (Native.DwmGetWindowAttribute(h, Native.DWMWA_CLOAKED, out int cloaked, 4) == 0 && cloaked != 0) return false; // 别的虚拟桌面上的
+        var ex = (long)Native.GetWindowLongPtr(h, Native.GWL_EXSTYLE);
+        if ((ex & Native.WS_EX_TOPMOST) != 0) return false;                  // 置顶窗口本来就在分区上面
+        if ((ex & Native.WS_EX_TRANSPARENT) != 0) return false;              // 点得穿的透明层
+        if (Native.GetWindow(h, Native.GW_OWNER) == progman) return false;   // 别的桌面挂件
+        cls.Clear(); Native.GetClassName(h, cls, cls.Capacity);
+        return !IgnoreClasses.Contains(cls.ToString());
     }
 
     static void LogUnder(IntPtr h)
