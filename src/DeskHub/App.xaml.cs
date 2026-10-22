@@ -440,7 +440,22 @@ public partial class App : Application
                                 case "yesterday": foreach (var n in D.Notes.Where(n => n.OkDay != null)) n.OkDay = "2000-01-01"; Core.GuideStore.Save(); break;
                                 case "shot": await Task.Delay(300); RenderWindow(_tools!.Guides.TryGetValue(D.Notes[int.Parse(arg.Split(' ')[0])].Id, out var gsw) ? gsw : throw new InvalidOperationException("这张便签现在没显示"), arg.Split(' ', 2)[1]); break;
                                 case "manager": { var m = _tools!.OpenManagerForTest(); await Task.Delay(400); RenderWindow(m, arg); } break;
-                                case "editor": { var ed = new GuideEditor(D.Notes[0], false); ed.Show(); await Task.Delay(400); RenderWindow(ed, arg); ed.Close(); } break;
+                                case "editor": // editor [序号] 截图文件
+                                    {
+                                        var ea = arg.Split(' ', 2);
+                                        int ei = ea.Length == 2 && int.TryParse(ea[0], out var eix) ? eix : 0;
+                                        var ed = new GuideEditor(D.Notes[ei], false); ed.Show(); await Task.Delay(500); RenderWindow(ed, ea.Length == 2 && ei.ToString() == ea[0] ? ea[1] : arg); ed.Close();
+                                    }
+                                    break;
+                                case "edit": // edit 序号 流程名(-=不接力) 位置(从0起) 时间(-=一直在)：模拟在编辑窗口里改完点保存
+                                    {
+                                        var ea = arg.Split(' ');
+                                        var ed = new GuideEditor(D.Notes[int.Parse(ea[0])], false);
+                                        ed.TestSet(ea[1] == "-" ? "" : ea[1], int.Parse(ea[2]), ea[3] == "-" ? "" : ea[3]);
+                                        ed.TestCommit(); ed.Close(); Core.GuideStore.Save();
+                                        report.AddRange(D.Notes.Select((n, i) => $"  [{i}] {n.Text} | flow={n.Flow} step={n.Step} at={n.ShowAt}"));
+                                    }
+                                    break;
                                 case "export": Core.GuideStore.Export(arg, SystemParameters.WorkArea); break;
                                 case "import": report.Add("import → " + Core.GuideStore.Import(arg, new Rect(0, 0, 1280, 700), true)); break;
                             }

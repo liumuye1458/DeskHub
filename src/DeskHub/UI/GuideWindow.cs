@@ -154,7 +154,7 @@ public sealed class GuideWindow : Window
     /// 圆角卡片 + 左侧小尖角，一笔画成（边框连续、阴影一体）。尖角两边是微微内凹的弧线，尖端略圆，看起来更柔和。
     /// 尖端位置 = 卡片左上角往左 TailLen、往下 3：便签放在要指的东西右边，用尖端对准它。
     /// </summary>
-    static Geometry Bubble(Rect r, bool tail)
+    internal static Geometry Bubble(Rect r, bool tail)
     {
         double x = r.X, y = r.Y, R = r.Right, Bm = r.Bottom, k = Radius;
         var g = new StreamGeometry();
