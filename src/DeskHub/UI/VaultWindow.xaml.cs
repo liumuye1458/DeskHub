@@ -426,7 +426,7 @@ public partial class VaultWindow : Window
     void OpenUrl(VaultEntry e)
     {
         var u = e.Url.Contains("://") ? e.Url : "https://" + e.Url;
-        try { Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); e.LastUsed = DateTime.Now; _v?.Save(); }
+        try { Interop.ShellMenu.LetOpenedWindowToFront(); Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); e.LastUsed = DateTime.Now; _v?.Save(); }
         catch (Exception ex) { ShowToast(L.T("打不开：") + ex.Message); }
     }
 

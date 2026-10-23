@@ -873,7 +873,7 @@ public sealed class DeskController : IFenceHost
     {
         var meta = State.Get(item.Path, DateTime.Now);
         meta.LastOpened = DateTime.Now;
-        if (item.IsSystem) Native.ShellExecute(IntPtr.Zero, null, "explorer.exe", "shell:" + item.Path, null, 1);
+        if (item.IsSystem) { ShellMenu.LetOpenedWindowToFront(); Native.ShellExecute(IntPtr.Zero, null, "explorer.exe", "shell:" + item.Path, null, 1); }
         else ShellMenu.Open(item.Path);
         Refresh();
     }

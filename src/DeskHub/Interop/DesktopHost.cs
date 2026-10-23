@@ -66,8 +66,11 @@ static class DesktopHost
         if (hide) HideSystemIcons();
     }
 
-    /// <summary>让窗口变成"桌面挂件"：不进任务栏和 Alt+Tab、点击不抢焦点、永远压在普通窗口下面。</summary>
-    public static void Pin(Window w)
+    /// <summary>
+    /// 让窗口变成"桌面挂件"：不进任务栏和 Alt+Tab、点击不抢焦点、永远压在普通窗口下面。
+    /// upper：便签这类要贴在分区上面的挂件——仍在所有程序下面，但永远不会被分区、时钟、坞盖住。
+    /// </summary>
+    public static void Pin(Window w, bool upper = false)
     {
         var h = new WindowInteropHelper(w).Handle;
         var ex = (long)Native.GetWindowLongPtr(h, Native.GWL_EXSTYLE);
@@ -75,10 +78,11 @@ static class DesktopHost
         Native.SetWindowLongPtr(h, Native.GWL_EXSTYLE, new IntPtr(ex));
         // 归属于桌面窗口：按 Win+D 时系统把它当作桌面的一部分，不会被藏起来
         Native.SetWindowLongPtr(h, Native.GWLP_HWNDPARENT, Progman);
-        SendToBottom(h);
-        HwndSource.FromHwnd(h)?.AddHook(BottomHook);
         _pinned.Add(h);
-        w.Closed += (_, _) => _pinned.Remove(h);
+        if (upper) _upper.Add(h);
+        Place(h);
+        HwndSource.FromHwnd(h)?.AddHook(BottomHook);
+        w.Closed += (_, _) => { _pinned.Remove(h); _upper.Remove(h); };
         StartGuard();
         // 分区是桌面的一部分，不该被最小化（"全部最小化"、任务栏"显示桌面"等），被最小化就立刻还原
         w.StateChanged += (_, _) =>
@@ -93,18 +97,64 @@ static class DesktopHost
         var h = new WindowInteropHelper(w).Handle;
         if (h == IntPtr.Zero) return;
         Native.SetWindowLongPtr(h, Native.GWLP_HWNDPARENT, Progman);
-        SendToBottom(h);
+        Place(h);
     }
 
-    static void SendToBottom(IntPtr h) =>
-        Native.SetWindowPos(h, Native.HWND_BOTTOM, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+    static bool _moving; // 我们自己在排顺序：BottomHook 别插手
+
+    static void MoveAfter(IntPtr h, IntPtr after)
+    {
+        _moving = true;
+        try { Native.SetWindowPos(h, after, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE); }
+        finally { _moving = false; }
+    }
+
+    static void SendToBottom(IntPtr h) => MoveAfter(h, Native.HWND_BOTTOM);
+
+    /// <summary>放回自己该在的位置：普通挂件到最底，便签到分区正上方。</summary>
+    static void Place(IntPtr h)
+    {
+        if (!_upper.Contains(h)) { SendToBottom(h); return; }
+        var slot = UpperSlot(h);
+        if (slot != null) MoveAfter(h, slot.Value);
+    }
+
+    /// <summary>
+    /// 便签该插到谁后面：紧贴最上面那个分区（时钟、坞）的上方，这样仍在所有程序下面，又不会被分区盖住。
+    /// 返回 null 表示它已经在分区上面了，不用动。
+    /// </summary>
+    static IntPtr? UpperSlot(IntPtr self)
+    {
+        IntPtr first = IntPtr.Zero;
+        bool selfAbove = false;
+        Native.EnumWindows((h, _) =>
+        {
+            if (h == self) { selfAbove = Native.IsWindowVisible(self); return true; } // 刚建好还没显示的窗口在最顶上，位置不算数
+            if (_pinned.Contains(h) && !_upper.Contains(h) && Native.IsWindowVisible(h)) { first = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        if (first == IntPtr.Zero) return Native.HWND_BOTTOM; // 没有分区：和以前一样待在最底
+        if (selfAbove) return null;
+        var prev = Native.GetWindow(first, Native.GW_HWNDPREV);
+        if (prev == self) return null;
+        // 分区上面没有普通窗口（只有任务栏这类置顶窗口）：放到普通窗口的最上面，正好就是分区上方
+        if (prev == IntPtr.Zero || ((long)Native.GetWindowLongPtr(prev, Native.GWL_EXSTYLE) & Native.WS_EX_TOPMOST) != 0) return Native.HWND_TOP;
+        return prev;
+    }
+
+    /// <summary>整组重新排：便签在上、分区等在下，各自原来的上下顺序不变，全部压在程序下面。</summary>
+    static void Restack(List<IntPtr> ours)
+    {
+        foreach (var h in ours.Where(_upper.Contains)) SendToBottom(h);   // 从上往下逐个压底：先压的最后在最上面
+        foreach (var h in ours.Where(h => !_upper.Contains(h))) SendToBottom(h);
+    }
 
     // ---------------- 守底 ----------------
     // 偶尔会有别的程序的窗口排到分区下面（比如它最小化时被系统挪到最底层，之后没抢到焦点就自己弹出来），
     // 看起来就是分区盖在程序上面，点一下程序才恢复。
     // 所以：有窗口弹出、最小化/还原、切换前台、切换虚拟桌面时检查一次，另外每秒兜底；
     // 发现有普通窗口在分区下面，就把分区重新压回最底（整组一起动，彼此的上下顺序不变），并记到 zorder.log。
-    static readonly HashSet<IntPtr> _pinned = new();
+    static readonly HashSet<IntPtr> _pinned = new(), _upper = new();
     static Native.WinEventProc? _guardProc;
     static DispatcherTimer? _guardTimer, _guardSoon;
     static readonly Dictionary<IntPtr, (int Count, DateTime Since)> _stubborn = new();
@@ -141,26 +191,39 @@ static class DesktopHost
         if (_pinned.Count == 0) return;
         var rects = _pinned.Where(Native.IsWindowVisible).Select(h => { Native.GetWindowRect(h, out var r); return r; }).ToList();
         var ours = new List<IntPtr>();
-        IntPtr under = IntPtr.Zero;
+        var lowRects = new List<Native.RECT>();
+        IntPtr under = IntPtr.Zero, buried = IntPtr.Zero;
         var progman = Progman;
         var cls = new StringBuilder(64);
         Native.EnumWindows((h, _) =>
         {
-            if (_pinned.Contains(h)) { if (Native.IsWindowVisible(h)) ours.Add(h); return true; }
+            if (_pinned.Contains(h))
+            {
+                if (!Native.IsWindowVisible(h)) return true;
+                ours.Add(h);
+                Native.GetWindowRect(h, out var pr);
+                if (!_upper.Contains(h)) lowRects.Add(pr);
+                else if (buried == IntPtr.Zero && lowRects.Any(f => Overlap(f, pr))) buried = h; // 便签被分区盖住了
+                return true;
+            }
             if (h == progman) return false;                                       // 桌面后面的本来就被桌面挡着，不归我们管
             if (ours.Count == 0 || under != IntPtr.Zero || !IsCoverable(h, progman, cls)) return true;
             Native.GetWindowRect(h, out var r);
             if (r.Right - r.Left < 40 || r.Bottom - r.Top < 40) return true;     // 太小的不是程序界面
-            if (!rects.Any(f => f.Left < r.Right && r.Left < f.Right && f.Top < r.Bottom && r.Top < f.Bottom)) return true; // 没和分区叠在一起，盖不住
+            if (!rects.Any(f => Overlap(f, r))) return true;                      // 没和分区叠在一起，盖不住
             if (IsStubborn(h)) return true;
             under = h;
             return true;
         }, IntPtr.Zero);
-        if (under == IntPtr.Zero) return;
-        Note(under);
-        foreach (var h in ours) SendToBottom(h); // 从上往下逐个压底，原来的上下顺序保持不变
-        LogUnder(under);
+        if (under == IntPtr.Zero && buried == IntPtr.Zero) return;
+        if (under != IntPtr.Zero) Note(under);
+        var fg = Native.GetForegroundWindow(); // 先记下前台是谁，再动顺序
+        Restack(ours);
+        if (under != IntPtr.Zero) LogUnder(under, fg);
+        else Log("便签被分区盖住，已提回分区上面");
     }
+
+    static bool Overlap(Native.RECT a, Native.RECT b) => a.Left < b.Right && b.Left < a.Right && a.Top < b.Bottom && b.Top < a.Bottom;
 
     /// <summary>这个窗口是不是“会被分区盖住的程序界面”。</summary>
     static bool IsCoverable(IntPtr h, IntPtr progman, StringBuilder cls)
@@ -175,17 +238,27 @@ static class DesktopHost
         return !IgnoreClasses.Contains(cls.ToString());
     }
 
-    static void LogUnder(IntPtr h)
+    // 顺带记下当时的前台窗口：如果总是“本程序的分区”，说明是从分区打开东西时新窗口没抢到前台
+    static void LogUnder(IntPtr h, IntPtr fg) =>
+        Log($"分区下面有窗口，已压回最底：{Describe(h)}；当时前台：{(_pinned.Contains(fg) ? "本程序的挂件" : Describe(fg))}");
+
+    static string Describe(IntPtr h)
+    {
+        if (h == IntPtr.Zero) return "无";
+        var cls = new StringBuilder(128); Native.GetClassName(h, cls, cls.Capacity);
+        var title = new StringBuilder(128); Native.GetWindowText(h, title, title.Capacity);
+        Native.GetWindowThreadProcessId(h, out var pid);
+        string proc; try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { proc = "?"; }
+        return $"{proc} [{cls}] {title}";
+    }
+
+    static void Log(string msg)
     {
         try
         {
-            var cls = new StringBuilder(128); Native.GetClassName(h, cls, cls.Capacity);
-            var title = new StringBuilder(128); Native.GetWindowText(h, title, title.Capacity);
-            Native.GetWindowThreadProcessId(h, out var pid);
-            string proc; try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { proc = "?"; }
             var path = System.IO.Path.Combine(Core.AppConfig.DataDir, "zorder.log");
             if (System.IO.File.Exists(path) && new System.IO.FileInfo(path).Length > 256 * 1024) System.IO.File.Delete(path);
-            System.IO.File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} 分区下面有窗口，已压回最底：{proc} [{cls}] {title}\r\n");
+            System.IO.File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}\r\n");
         }
         catch { }
     }
@@ -205,12 +278,16 @@ static class DesktopHost
     static IntPtr BottomHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == 0x0112 && ((int)wParam & 0xFFF0) == 0xF020) { handled = true; return IntPtr.Zero; } // WM_SYSCOMMAND / SC_MINIMIZE：不理
-        if (msg == Native.WM_WINDOWPOSCHANGING)
+        if (msg == Native.WM_WINDOWPOSCHANGING && !_moving)
         {
             unsafe
             {
                 var wp = (Native.WINDOWPOS*)lParam;
-                if ((wp->flags & Native.SWP_NOZORDER) == 0) wp->hwndInsertAfter = Native.HWND_BOTTOM;
+                if ((wp->flags & Native.SWP_NOZORDER) != 0) return IntPtr.Zero;
+                if (!_upper.Contains(hwnd)) { wp->hwndInsertAfter = Native.HWND_BOTTOM; return IntPtr.Zero; }
+                // 便签被点：不沉到分区下面，留在分区正上方
+                var slot = UpperSlot(hwnd);
+                if (slot == null) wp->flags |= Native.SWP_NOZORDER; else wp->hwndInsertAfter = slot.Value;
             }
         }
         return IntPtr.Zero;

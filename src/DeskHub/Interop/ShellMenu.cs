@@ -135,6 +135,7 @@ static class ShellMenu
                 nShow = 1,
                 ptInvoke = pt,
             };
+            LetOpenedWindowToFront();
             cm.InvokeCommand(ref info);
             return true;
         }
@@ -179,10 +180,21 @@ static class ShellMenu
         return IntPtr.Zero;
     }
 
-    public static void Open(string path) => Native.ShellExecute(IntPtr.Zero, null, path, null, System.IO.Path.GetDirectoryName(path), 1);
+    public static void Open(string path)
+    {
+        LetOpenedWindowToFront();
+        Native.ShellExecute(IntPtr.Zero, null, path, null, System.IO.Path.GetDirectoryName(path), 1);
+    }
+
+    /// <summary>
+    /// 打开的东西常常由别的、早已在运行的进程弹窗口（资源管理器、微信等单实例程序）。那个进程没有“抢前台”的资格，
+    /// 窗口就会被系统塞到当前前台窗口——也就是刚被点的分区——的下面，看起来分区盖在程序上。先把前台资格放出去。
+    /// </summary>
+    public static void LetOpenedWindowToFront() => Native.AllowSetForegroundWindow(Native.ASFW_ANY);
 
     public static void Reveal(string path)
     {
+        LetOpenedWindowToFront();
         if (Native.SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _) != 0) return;
         try { Native.SHOpenFolderAndSelectItems(pidl, 0, null, 0); }
         finally { Native.CoTaskMemFree(pidl); }

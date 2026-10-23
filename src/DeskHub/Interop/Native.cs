@@ -22,7 +22,7 @@ static class Native
     public const int WM_MOUSEACTIVATE = 0x0021;
     public const int MA_NOACTIVATE = 3;
 
-    public static readonly IntPtr HWND_BOTTOM = new(1);
+    public static readonly IntPtr HWND_BOTTOM = new(1), HWND_TOP = IntPtr.Zero;
     public const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_NOOWNERZORDER = 0x0200;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -42,6 +42,9 @@ static class Native
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
+    public const int ASFW_ANY = -1;
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern uint RegisterWindowMessage(string s);
 
     public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
@@ -55,7 +58,7 @@ static class Native
     public const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_SYSTEM_MINIMIZESTART = 0x0016, EVENT_SYSTEM_MINIMIZEEND = 0x0017, EVENT_OBJECT_UNCLOAKED = 0x8018;
 
     [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
-    public const uint GW_OWNER = 4;
+    public const uint GW_HWNDPREV = 3, GW_OWNER = 4;
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);

@@ -53,7 +53,7 @@ public sealed class GuideWindow : Window
         _tick.Tick += (_, _) => Tick();
         SourceInitialized += (_, _) =>
         {
-            if (!IsTopmostNote) DesktopHost.Pin(this);
+            if (!IsTopmostNote) DesktopHost.Pin(this, upper: true); // 贴桌面的便签：在程序下面，但在分区上面
             else
             {
                 // 置顶的：不进 Alt+Tab
