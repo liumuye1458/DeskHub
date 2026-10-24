@@ -407,6 +407,40 @@ public partial class App : Application
                             }
                         }
                         break;
+                    case "cal": // 日历：today 日期 / open / view 年-月 / sel 日期 日期 / hover 日期 / edit 日期 / trip 日期|文字|提醒 / shot 文件 / status / terms 年 / lunar 日期 / remind 日期 / set 项 0|1
+                        {
+                            var a2 = parts.Length > 2 ? parts[2] : "";
+                            DateTime Dt(string x) => DateTime.ParseExact(x, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                            var cw = _tools!.CalendarForTest;
+                            switch (parts[1])
+                            {
+                                case "today": UI.CalendarWindow.TodayOverride = Dt(a2); break;
+                                case "open": _tools.Calendar(); _tools.CalendarForTest!.KeepOpenForTest(); await Task.Delay(300); break;
+                                case "view": cw!.TestView(DateTime.ParseExact(a2 + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)); break;
+                                case "sel": { var v = a2.Split(' '); cw!.TestSelect(Dt(v[0]), Dt(v[1])); } break;
+                                case "hover": cw!.TestHover(Dt(a2)); break;
+                                case "edit": cw!.TestEdit(Dt(a2)); break;
+                                case "trip": { var f = a2.Split('|'); Core.TripStore.Set(Dt(f[0]), f[1], f.Length < 3 || f[2] == "1"); } break;
+                                case "shot": await Task.Delay(300); RenderWindow(cw!, a2); break;
+                                case "status": report.Add("cal status → " + cw!.TestStatus); break;
+                                case "terms": report.Add($"terms {a2}: " + string.Join(" ", Core.ChinaCal.TermsOf(int.Parse(a2)).Select(kv => $"{kv.Key:MM-dd}{kv.Value}"))); break;
+                                case "lunar": { var d = Dt(a2); report.Add($"lunar {a2}: {Core.ChinaCal.Of(d).Full} {Core.ChinaCal.Festival(d)}"); } break;
+                                case "remind":
+                                    {
+                                        int n = Core.TripStore.CheckReminders(Dt(a2).AddHours(9), SystemParameters.WorkArea);
+                                        report.Add($"remind {a2}: {n} → " + string.Join(" / ", Core.GuideStore.D.Notes.Select(x => x.Text.Replace('\n', ' '))));
+                                    }
+                                    break;
+                                case "set":
+                                    {
+                                        var v = a2.Split(' '); bool on = v[1] == "1"; var cfg = _ctl!.Cfg;
+                                        switch (v[0]) { case "lunar": cfg.CalLunar = on; break; case "cn": cfg.CalChina = on; break; case "id": cfg.CalIndonesia = on; break; case "mon": cfg.CalMondayFirst = on; break; }
+                                        _tools.RefreshCalendar();
+                                    }
+                                    break;
+                            }
+                        }
+                        break;
                     case "guide": // guide 子命令（备忘录便签）
                         {
                             var sub = parts[1];

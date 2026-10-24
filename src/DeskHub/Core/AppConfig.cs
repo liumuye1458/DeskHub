@@ -92,6 +92,14 @@ public sealed class AppConfig
     /// <summary>时钟下面自己写的一行字（空 = 不显示）。</summary>
     public string ClockNote { get; set; } = "";
 
+    // 日历
+    public bool CalLunar { get; set; } = true;
+    /// <summary>中国放假 / 调休上班（休 / 班）。</summary>
+    public bool CalChina { get; set; } = true;
+    /// <summary>印尼红日子（整格标红）。</summary>
+    public bool CalIndonesia { get; set; } = true;
+    public bool CalMondayFirst { get; set; } = true;
+
     public List<TopicRule> Topics { get; set; } = DefaultTopics();
     /// <summary>当前显示器组合下的布局（就是 Layouts[LayoutSig].Items 那一份）。</summary>
     public Dictionary<string, FenceLayout> Layout { get; set; } = new();

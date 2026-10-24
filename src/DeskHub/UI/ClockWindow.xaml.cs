@@ -20,6 +20,8 @@ public partial class ClockWindow : Window
     /// <summary>时钟下面自己写的一行字。</summary>
     public string Note { get; set; } = "";
     public event Action? Moved;
+    /// <summary>点了一下（没拖动）。</summary>
+    public event Action? Clicked;
 
     public ClockWindow()
     {
@@ -30,7 +32,14 @@ public partial class ClockWindow : Window
             DesktopHost.Pin(this);
             HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(Hook);
         };
-        MouseLeftButtonDown += (_, _) => { DragMove(); Moved?.Invoke(); };
+        // 按住拖 = 挪位置；点一下（没挪动）= 打开日历
+        MouseLeftButtonDown += (_, _) =>
+        {
+            double x = Left, y = Top;
+            DragMove();
+            if (Math.Abs(Left - x) + Math.Abs(Top - y) > 2) Moved?.Invoke();
+            else Clicked?.Invoke();
+        };
         Loaded += (_, _) => Tick();
     }
 

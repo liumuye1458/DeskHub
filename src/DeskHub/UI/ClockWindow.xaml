@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False" SizeToContent="WidthAndHeight"
-        FontFamily="{StaticResource UiFont}" Foreground="White" Cursor="SizeAll"
+        FontFamily="{StaticResource UiFont}" Foreground="White" Cursor="Hand" ToolTip="点一下打开日历 · 按住拖动可以挪位置"
         TextOptions.TextFormattingMode="Ideal">
   <StackPanel Background="#01000000" Effect="{StaticResource TextShadow}" Margin="4">
     <TextBlock x:Name="TimeText" FontSize="56" FontWeight="Light" FontFamily="Segoe UI Light, Microsoft YaHei UI Light, Microsoft YaHei UI"/>

@@ -117,12 +117,17 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="CheckBox">
-              <StackPanel Orientation="Horizontal" Background="Transparent">
-                <Border x:Name="track" Width="34" Height="18" CornerRadius="9" Background="#CCCCCC" VerticalAlignment="Center">
+              <!-- DockPanel 而不是横向 StackPanel：文字放不下时能折行，不会被截掉 -->
+              <DockPanel Background="Transparent">
+                <Border x:Name="track" DockPanel.Dock="Left" Width="34" Height="18" CornerRadius="9" Background="#CCCCCC" VerticalAlignment="Center">
                   <Ellipse x:Name="knob" Width="14" Height="14" Fill="White" HorizontalAlignment="Left" Margin="2,0"/>
                 </Border>
-                <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
-              </StackPanel>
+                <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center">
+                  <ContentPresenter.Resources>
+                    <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                  </ContentPresenter.Resources>
+                </ContentPresenter>
+              </DockPanel>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsChecked" Value="True">
                   <Setter TargetName="track" Property="Background" Value="#07C255"/>

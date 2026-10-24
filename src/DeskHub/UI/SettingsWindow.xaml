@@ -118,6 +118,21 @@
         </StackPanel>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,0,0,0" TextWrapping="Wrap" Text="例如店名、直播间口号。空着就不显示；最长和上面的时区那一行一样宽，超出的显示省略号。"/>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
+
+        <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,24,0,4">日历</TextBlock>
+        <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="点一下桌面时钟就能打开日历；也可以点工具条上的“日历”，或在“快捷键”里给它设一个组合键。"/>
+        <CheckBox x:Name="CalLunar" Style="{StaticResource Toggle}" Margin="0,12,0,4" Content="显示农历（含节气、春节中秋等传统节日）"/>
+        <CheckBox x:Name="CalChina" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示中国节假日（放假标“休”，调休上班标“班”）"/>
+        <TextBlock x:Name="CalChinaHint" Foreground="#999" FontSize="12" Margin="44,0,0,0" TextWrapping="Wrap"/>
+        <CheckBox x:Name="CalIndonesia" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示印尼红日子（整格标红：深红 = 法定假日，浅红 = 联合休假）"/>
+        <TextBlock x:Name="CalIndonesiaHint" Foreground="#999" FontSize="12" Margin="44,0,0,0" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <TextBlock Text="一周从哪天开始" VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <ComboBox x:Name="CalWeekStart" Width="120" Height="28" VerticalContentAlignment="Center">
+            <ComboBoxItem Content="周一"/>
+            <ComboBoxItem Content="周日"/>
+          </ComboBox>
+        </StackPanel>
         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
           <Button x:Name="Layouts" Content="布局：保存 / 切换 / 导出 / 导入…" Style="{StaticResource BtnW}" Margin="0,0,10,0"/>
           <Button x:Name="ResetLayout" Content="恢复默认布局" Style="{StaticResource BtnW}"/>

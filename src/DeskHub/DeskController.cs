@@ -72,6 +72,7 @@ public sealed class DeskController : IFenceHost
         InitProfiles();
         _clock = new ClockWindow { ShowSeconds = Cfg.ShowSeconds, Note = Cfg.ClockNote };
         _clock.Moved += () => SaveLayout("clock", _clock);
+        _clock.Clicked += () => Tools?.Calendar(new Rect(_clock.Left, _clock.Top, _clock.ActualWidth, _clock.ActualHeight), WorkAreaOf(_clock));
         Place(_clock, "clock");
         _clock.SourceInitialized += (_, _) =>
         {
@@ -864,6 +865,18 @@ public sealed class DeskController : IFenceHost
         var r = _archiver.Undo(batch);
         Refresh();
         return r;
+    }
+
+    /// <summary>窗口所在那块屏幕的工作区（设备无关像素）。</summary>
+    static Rect WorkAreaOf(Window w)
+    {
+        var src = PresentationSource.FromVisual(w);
+        if (src?.CompositionTarget == null) return SystemParameters.WorkArea;
+        var toDev = src.CompositionTarget.TransformToDevice;
+        var p = toDev.Transform(new Point(w.Left + 10, w.Top + 10));
+        var wa = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)p.X, (int)p.Y)).WorkingArea;
+        var fromDev = src.CompositionTarget.TransformFromDevice;
+        return new Rect(fromDev.Transform(new Point(wa.Left, wa.Top)), fromDev.Transform(new Point(wa.Right, wa.Bottom)));
     }
 
     public void FooterClicked() => RequestArchiveLog?.Invoke();

@@ -22,11 +22,12 @@ public sealed class ToolHub : IDisposable
         ("search", L.T("文件查找"), Hotkeys.DoubleCtrl),
         ("calc", L.T("计算器"), ""),
         ("memo", L.T("备忘录"), ""),
+        ("calendar", L.T("日历"), ""),
         ("vault", L.T("密码箱"), ""),
     };
 
     /// <summary>功能键名 → 工具条上的按钮文字。</summary>
-    static string DockLabel(string key) => key switch { "shot" => L.T("截图"), "search" => L.T("查找"), "calc" => L.T("计算器"), "memo" => L.T("备忘录"), _ => L.T("密码箱") };
+    static string DockLabel(string key) => key switch { "shot" => L.T("截图"), "search" => L.T("查找"), "calc" => L.T("计算器"), "memo" => L.T("备忘录"), "calendar" => L.T("日历"), _ => L.T("密码箱") };
 
     readonly DeskController _c;
     readonly bool _sandbox;
@@ -35,6 +36,8 @@ public sealed class ToolHub : IDisposable
     CalcWindow? _calc;
     DockWindow? _dock;
     GuideManager? _memo;
+    CalendarWindow? _calendar;
+    DateTime _calendarClosed;
     VaultWindow? _vault;
     readonly Dictionary<string, GuideWindow> _guides = new();
     readonly DispatcherTimer _remind = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(30) };
@@ -58,6 +61,7 @@ public sealed class ToolHub : IDisposable
         _dock.Add(L.T("截图"), "M5,1 V15 H19 M1,5 H15 V19", L.T("截图"), () => Shot());
         _dock.Add(L.T("计算器"), "M4,2 H16 V18 H4 Z M7,5.5 H13 M7,9.5 H7.6 M10,9.5 H10.6 M13,9.5 H13.6 M7,12.5 H7.6 M10,12.5 H10.6 M13,12.5 H13.6 M7,15.5 H7.6 M10,15.5 H10.6 M13,15.5 H13.6", L.T("计算器"), Calc);
         _dock.Add(L.T("备忘录"), "M5,2 H15 V18 H5 Z M8,6.5 H12.5 M8,10 H12.5 M8,13.5 H11", L.T("备忘录"), Memo);
+        _dock.Add(L.T("日历"), "M3,4 H17 V17 H3 Z M3,8 H17 M7,2 V5.5 M13,2 V5.5 M6.5,11.5 H7.5 M9.5,11.5 H10.5 M12.5,11.5 H13.5 M6.5,14.5 H7.5 M9.5,14.5 H10.5", L.T("日历"), () => Calendar());
         _dock.Add(L.T("密码箱"), "M4,9 H16 V18 H4 Z M7,9 V6 A3,3 0 0 1 13,6 V9 M10,12.5 V14.5", L.T("密码箱"), Vault);
         _dock.Add(L.T("排列"), "M2,2 H8.5 V8.5 H2 Z M11.5,2 H18 V8.5 H11.5 Z M2,11.5 H8.5 V18 H2 Z M11.5,11.5 H18 V18 H11.5 Z", L.T("排列桌面：点一下对齐你现在的摆法，再点一下（或双击）按推荐方案重排"), () => Arrange());
         _dock.Add(L.T("设置"), "M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z M10,2.5 V4.7 M10,15.3 V17.5 M2.5,10 H4.7 M15.3,10 H17.5 M4.7,4.7 L6.3,6.3 M13.7,13.7 L15.3,15.3 M4.7,15.3 L6.3,13.7 M13.7,6.3 L15.3,4.7", L.T("设置"), () => _c.OpenSettings("general"));
@@ -68,8 +72,11 @@ public sealed class ToolHub : IDisposable
         // 备忘录：贴在屏幕上的指引便签。每 30 秒看一次：定时的到点出现、过了凌晨 5 点每天的重新出现
         Core.GuideStore.Load();
         Core.GuideStore.Changed += SyncGuides;
-        _remind.Tick += (_, _) => SyncGuides(flash: true);
+        // 行程：提前一天弹便签提醒（也是每 30 秒看一次）
+        Core.TripStore.Load();
+        _remind.Tick += (_, _) => { CheckTrips(); SyncGuides(flash: true); };
         _remind.Start();
+        CheckTrips();
         SyncGuides(flash: false);
         ApplyVaultApi();
 
@@ -89,7 +96,7 @@ public sealed class ToolHub : IDisposable
         var list = new List<(string, string, Action)>();
         foreach (var a in Actions)
         {
-            Action run = a.Key switch { "shot" => () => Shot(), "search" => Search, "calc" => Calc, "memo" => Memo, _ => Vault };
+            Action run = a.Key switch { "shot" => () => Shot(), "search" => Search, "calc" => Calc, "memo" => Memo, "calendar" => () => Calendar(), _ => Vault };
             list.Add((a.Key, HotkeyOf(a.Key), run));
         }
         HotkeyErrors = _keys.Apply(list);
@@ -140,6 +147,24 @@ public sealed class ToolHub : IDisposable
         }
         _memo.Popup();
     }
+
+    /// <summary>打开 / 收起日历。anchor = 时钟的位置（日历出现在它下面）；空 = 放在屏幕中间。</summary>
+    public void Calendar(Rect? anchor = null, Rect? workArea = null)
+    {
+        if (_calendar != null) { _calendar.Close(); return; }
+        // 点时钟时日历先因为失去焦点关掉了，这一下是想关，不是想再打开
+        if (DateTime.Now - _calendarClosed < TimeSpan.FromMilliseconds(400)) return;
+        _calendar = new CalendarWindow(_c.Cfg);
+        _calendar.Closed += (_, _) => { _calendar = null; _calendarClosed = DateTime.Now; Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, App.TrimMemory); };
+        _calendar.ShowNear(anchor, workArea ?? SystemParameters.WorkArea);
+    }
+
+    /// <summary>设置改了：开着的日历重画。</summary>
+    public void RefreshCalendar() => _calendar?.Refresh();
+
+    public CalendarWindow? CalendarForTest => _calendar;
+
+    void CheckTrips() => Core.TripStore.CheckReminders(DateTime.Now, SystemParameters.WorkArea);
 
     public void Vault()
     {
@@ -371,6 +396,7 @@ public sealed class ToolHub : IDisposable
         Core.GuideStore.Changed -= SyncGuides;
         foreach (var g in _guides.Values) g.Close();
         _memo?.Close();
+        _calendar?.Close();
         _vault?.Close();
         Core.SecretClipboard.ClearNow();
         _arrToast?.Close();
