@@ -42,7 +42,8 @@ public sealed class TripImportWindow : Window
         bool on = TripAi.Configured(_cfg);
         _engine.Inlines.Add(new System.Windows.Documents.Run(on ? L.F("用 AI 识别：{0}", TripAi.Describe(_cfg)) : L.T("还没配 AI 服务，先用本机识别（不联网，准确度一般）。")));
         var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(on ? L.T("换个 AI 服务") : L.T("去配置 AI"))) { Foreground = B(Blue), TextDecorations = null, Cursor = Cursors.Hand };
-        link.Click += (_, _) => SettingsRequested?.Invoke();
+        // 去设置时先不置顶，免得把设置窗口压在下面；回到这个窗口再置顶
+        link.Click += (_, _) => { Topmost = false; SettingsRequested?.Invoke(); };
         _engine.Inlines.Add(new System.Windows.Documents.Run(" "));
         _engine.Inlines.Add(link);
     }
@@ -68,8 +69,11 @@ public sealed class TripImportWindow : Window
         AllowDrop = true;
 
         // ---- 标题（按住拖动）+ 关闭 ----
-        var close = new TextBlock { Text = "✕", FontSize = 13, Foreground = B(Mute), Cursor = Cursors.Hand, Padding = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        close.MouseLeftButtonUp += (_, _) => Close();
+        // ✕ 在可拖动的标题栏里：按下就关（等“松开”的话，按下时已经被拖动吃掉了，点了没反应）
+        var close = new TextBlock { Text = "✕", FontSize = 14, Foreground = B(Mute), Cursor = Cursors.Hand, Padding = new Thickness(10, 2, 4, 2), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center, ToolTip = L.T("关闭") };
+        close.MouseEnter += (_, _) => close.Foreground = B("#E5484D");
+        close.MouseLeave += (_, _) => close.Foreground = B(Mute);
+        close.MouseLeftButtonDown += (_, e) => { e.Handled = true; Close(); };
         var head = new DockPanel { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
         DockPanel.SetDock(close, Dock.Right);
         head.Children.Add(close);
@@ -79,7 +83,7 @@ public sealed class TripImportWindow : Window
         // ---- 用的是哪个识别（去设置里改了，回到这个窗口时刷新）----
         var engine = _engine;
         ShowEngine();
-        Activated += (_, _) => ShowEngine();
+        Activated += (_, _) => { Topmost = true; ShowEngine(); };
 
         // ---- 输入：文字 + 截图 ----
         var placeholder = new TextBlock

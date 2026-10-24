@@ -11,7 +11,7 @@ namespace DeskHub.Core;
 
 /// <summary>
 /// 智能识别：把截图、聊天记录、订单文字变成一条条日程。
-/// 配了 AI 服务（OpenAI 兼容格式：公司一体机、OpenAI、Claude、DeepSeek、通义、Ollama……）就交给 AI；
+/// 配了 AI 服务（OpenAI 兼容格式：公司一体机、OpenAI、DeepSeek、通义、Ollama……；Claude 自己的格式也认）就交给 AI；
 /// 没配就在本机识字（Windows 自带 OCR）+ 规则找日期，准确度一般，但不联网。
 /// </summary>
 public static class TripAi
@@ -66,11 +66,24 @@ public static class TripAi
         public int Status { get; } = status;
     }
 
-    /// <summary>地址可以填到 /v1，也可以填完整的 …/chat/completions。</summary>
+    /// <summary>这些地址说的是 Claude 自己的格式（/v1/messages），不是 OpenAI 兼容格式。</summary>
+    static readonly HashSet<string> Native = new(StringComparer.OrdinalIgnoreCase);
+
+    static string Base(string url) => Endpoint(url, "");
+
+    /// <summary>
+    /// 走 Claude 自己的格式：地址填的就是 …/messages、是 Anthropic 官方地址，或者试过 OpenAI 格式不认（404 / 405）。
+    /// 公司一体机上跑的 Claude 多半是这种。
+    /// </summary>
+    static bool IsNative(string url) =>
+        Native.Contains(Base(url)) || url.Trim().TrimEnd('/').EndsWith("/messages", StringComparison.OrdinalIgnoreCase)
+        || (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) && u.Host.EndsWith("anthropic.com", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>地址可以填到 /v1，也可以填完整的 …/chat/completions 或 …/messages。</summary>
     static string Endpoint(string url, string path)
     {
         url = url.Trim().TrimEnd('/');
-        foreach (var tail in new[] { "/chat/completions", "/models" })
+        foreach (var tail in new[] { "/chat/completions", "/messages", "/models" })
             if (url.EndsWith(tail, StringComparison.OrdinalIgnoreCase)) { url = url[..^tail.Length]; break; }
         return url + path;
     }
@@ -78,13 +91,13 @@ public static class TripAi
     static HttpRequestMessage Req(HttpMethod m, string url, string key)
     {
         var r = new HttpRequestMessage(m, url);
-        if (key.Length > 0) r.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
-        // Claude 的 OpenAI 兼容地址：读模型列表要用它自己的写法
-        if (r.RequestUri?.Host.EndsWith("anthropic.com", StringComparison.OrdinalIgnoreCase) == true)
+        // 两种写法都带上（同一个服务，只是认哪个头不一样）：OpenAI 兼容认 Authorization，Claude 自己的格式认 x-api-key
+        if (key.Length > 0)
         {
-            if (key.Length > 0) r.Headers.TryAddWithoutValidation("x-api-key", key);
-            r.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+            r.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
+            r.Headers.TryAddWithoutValidation("x-api-key", key);
         }
+        r.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
         return r;
     }
 
@@ -154,6 +167,41 @@ public static class TripAi
         """;
 
     static async Task<List<Trip>> Ask(string url, string key, string model, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
+    {
+        if (IsNative(url)) return await AskNative(url, key, model, text, images, today, ct);
+        try { return await AskOpenAi(url, key, model, text, images, today, ct); }
+        catch (AiException e) when (e.Status is 404 or 405)
+        {
+            // OpenAI 格式不认：试试 Claude 自己的格式，认了就记住
+            try { var r = await AskNative(url, key, model, text, images, today, ct); Native.Add(Base(url)); return r; }
+            catch (AiException e2) when (e2.Status is 404 or 405) { throw e; }
+        }
+    }
+
+    /// <summary>Claude 自己的格式：POST …/messages，system 单独放，图片用 base64 块，必须带 max_tokens。</summary>
+    static async Task<List<Trip>> AskNative(string url, string key, string model, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
+    {
+        var parts = new JsonArray();
+        foreach (var img in images)
+            parts.Add(new JsonObject { ["type"] = "image", ["source"] = new JsonObject { ["type"] = "base64", ["media_type"] = "image/png", ["data"] = Convert.ToBase64String(img) } });
+        parts.Add(new JsonObject { ["type"] = "text", ["text"] = text.Length > 0 ? text : images.Count > 0 ? "Find the schedule in these screenshots." : "(empty)" });
+        var payload = new JsonObject
+        {
+            ["model"] = model,
+            ["max_tokens"] = 4096,
+            ["system"] = Prompt(today),
+            ["messages"] = new JsonArray { new JsonObject { ["role"] = "user", ["content"] = parts } },
+        };
+        var req = Req(HttpMethod.Post, Endpoint(url, "/messages"), key);
+        req.Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
+        var body = await Send(req, ct);
+        string content;
+        try { content = string.Concat(((JsonNode.Parse(body)?["content"] as JsonArray) ?? new()).Select(p => p?["type"]?.ToString() == "text" ? p?["text"]?.ToString() ?? "" : "")); }
+        catch { throw new AiException(L.T("AI 服务回的内容看不懂（不是 OpenAI 兼容格式？）")); }
+        return ParseItems(content) ?? throw new AiException(L.T("AI 回的内容里没找到日程清单，可以再试一次"));
+    }
+
+    static async Task<List<Trip>> AskOpenAi(string url, string key, string model, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
     {
         JsonNode user;
         if (images.Count == 0) user = text.Length > 0 ? text : "(empty)";
