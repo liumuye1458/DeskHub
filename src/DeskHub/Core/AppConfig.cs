@@ -101,6 +101,8 @@ public sealed class AppConfig
     /// <summary>印尼红日子（整格标红）。</summary>
     public bool CalIndonesia { get; set; } = true;
     public bool CalMondayFirst { get; set; } = true;
+    /// <summary>拉大日历时字和标记跟着变大。</summary>
+    public bool CalAutoScale { get; set; } = true;
 
     // 工具条收到屏幕边上
     public bool DockCollapsed { get; set; }

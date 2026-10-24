@@ -701,5 +701,6 @@
  "一周从周一开始": "Tuần bắt đầu từ thứ Hai",
  "隐藏日历（点工具条上的“日历”再打开）": "Ẩn lịch (bấm “Lịch” trên thanh công cụ để hiện lại)",
  "日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。": "Lịch luôn nằm trên màn hình. Giống các vùng, kéo thanh tiêu đề để di chuyển và kéo góc để đổi cỡ; kéo rộng để xem lịch trình sắp tới bên phải. “Lịch” trên thanh công cụ (hoặc phím tắt) để ẩn / hiện.",
- "在桌面上显示日历": "Hiện lịch trên màn hình"
+ "在桌面上显示日历": "Hiện lịch trên màn hình",
+ "拉大日历时字也跟着变大": "Chữ to lên khi phóng to lịch"
 }

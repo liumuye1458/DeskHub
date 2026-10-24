@@ -450,7 +450,7 @@ public partial class App : Application
                                 case "set":
                                     {
                                         var v = a2.Split(' '); bool on = v[1] == "1"; var cfg = _ctl!.Cfg;
-                                        switch (v[0]) { case "lunar": cfg.CalLunar = on; break; case "cn": cfg.CalChina = on; break; case "id": cfg.CalIndonesia = on; break; case "mon": cfg.CalMondayFirst = on; break; }
+                                        switch (v[0]) { case "lunar": cfg.CalLunar = on; break; case "cn": cfg.CalChina = on; break; case "id": cfg.CalIndonesia = on; break; case "mon": cfg.CalMondayFirst = on; break; case "scale": cfg.CalAutoScale = on; break; }
                                         _tools!.RefreshCalendar();
                                     }
                                     break;

@@ -701,5 +701,6 @@
  "一周从周一开始": "La semana empieza el lunes",
  "隐藏日历（点工具条上的“日历”再打开）": "Ocultar calendario (pulsa «Calendario» en la barra para volver a mostrarlo)",
  "日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。": "El calendario se queda en el escritorio. Como las vallas, arrastra el título para moverlo y la esquina para cambiar su tamaño; ensánchalo para ver los próximos viajes a la derecha. «Calendario» en la barra (o tu atajo) lo oculta o muestra.",
- "在桌面上显示日历": "Mostrar el calendario en el escritorio"
+ "在桌面上显示日历": "Mostrar el calendario en el escritorio",
+ "拉大日历时字也跟着变大": "Texto más grande al agrandar el calendario"
 }

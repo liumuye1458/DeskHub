@@ -701,5 +701,6 @@
  "一周从周一开始": "Week starts on Monday",
  "隐藏日历（点工具条上的“日历”再打开）": "Hide calendar (click “Calendar” on the toolbar to show it again)",
  "日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。": "The calendar stays on the desktop. Like fences, drag its title bar to move it and its corner to resize; make it wider to list upcoming trips on the right. “Calendar” on the toolbar (or your shortcut) hides / shows it.",
- "在桌面上显示日历": "Show the calendar on the desktop"
+ "在桌面上显示日历": "Show the calendar on the desktop",
+ "拉大日历时字也跟着变大": "Bigger text when the calendar is enlarged"
 }

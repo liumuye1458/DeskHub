@@ -39,6 +39,7 @@ public sealed class CalendarWidget : Window
     DateTime? _selA, _selB, _hover, _picked;
     bool _dragging, _lunar;
     ListMode _mode = (ListMode)(-1);
+    double _k = 1, _ks = 1, _cellH; // 放大倍数：_k 格子里的字和标记；_ks 标题栏、星期、行程列表（放得温和些）
 
     readonly TextBlock _title = new() { FontSize = 13, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _hint = new() { Foreground = Res<Brush>("TextSub"), FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 0, 4, 0) };
@@ -47,7 +48,9 @@ public sealed class CalendarWidget : Window
     readonly UniformGrid _fg = new() { Rows = 6, Columns = 7, IsHitTestVisible = false }; // 文字（整层一个阴影，比每个字一个阴影省）
     readonly Grid _cells = new() { Background = Brushes.Transparent, Cursor = Cursors.Hand };
     readonly Grid _body = new();
-    readonly Border _listBox;
+    readonly Border _listBox, _head;
+    readonly FrameworkElement _headDock, _listPanel;
+    readonly RowDefinition _headRow = new() { Height = new GridLength(HeadH) };
     readonly StackPanel _items = new();
     readonly Popup _tip = new() { AllowsTransparency = true, Placement = PlacementMode.Relative, StaysOpen = true };
     readonly TextBlock _tipText = new() { FontSize = 12, LineHeight = 19, Foreground = B("#333333") };
@@ -96,6 +99,7 @@ public sealed class CalendarWidget : Window
             DragMove();
             if (Left != x || Top != y) Moved?.Invoke();
         };
+        _head = head; _headDock = headDock;
 
         // ---- 月历 ----
         _fg.Effect = Res<Effect>("TextShadow");
@@ -146,6 +150,7 @@ public sealed class CalendarWidget : Window
         listPanel.Children.Add(listHead);
         listPanel.Children.Add(new ScrollViewer { Content = _items, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden });
         listPanel.Effect = Res<Effect>("TextShadow");
+        _listPanel = listPanel;
         _listBox = new Border { BorderBrush = Res<Brush>("FenceLine"), Child = listPanel };
 
         _body.ColumnDefinitions.Add(new ColumnDefinition());
@@ -169,7 +174,7 @@ public sealed class CalendarWidget : Window
         grip.DragCompleted += (_, _) => Moved?.Invoke();
 
         var grid = new Grid();
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HeadH) });
+        grid.RowDefinitions.Add(_headRow);
         grid.RowDefinitions.Add(new RowDefinition());
         grid.Children.Add(head);
         Grid.SetRow(_body, 1);
@@ -211,17 +216,38 @@ public sealed class CalendarWidget : Window
         return FirstCell().AddDays(row * 7 + col);
     }
 
-    /// <summary>按大小决定：行程放右边 / 下面 / 不放；格子够高才显示农历。</summary>
+    /// <summary>按大小决定：行程放右边 / 下面 / 不放；格子够高才显示农历；格子大了字跟着放大。</summary>
     void Relayout()
     {
         double w = double.IsNaN(Width) ? ActualWidth : Width, h = double.IsNaN(Height) ? ActualHeight : Height;
         var mode = w >= 440 ? ListMode.Right : h >= 400 ? ListMode.Below : ListMode.None;
-        double bodyH = h - HeadH - 2;
-        double calH = mode == ListMode.Below ? Math.Min(bodyH - 110, 300) : bodyH;
-        bool lunar = _cfg.CalLunar && (calH - WeekH - 8) / 6 >= 32;
-        if (mode == _mode && lunar == _lunar && _bg.Children.Count > 0) return;
-        _mode = mode; _lunar = lunar;
-        _body.ColumnDefinitions[1].Width = new GridLength(mode == ListMode.Right ? ListW : 0);
+        // 格子比默认（约 41×38）大多少，字就大多少（打七折，免得太夸张），最多 2 倍；
+        // 按 0.1 一档走，拖大小时不会每挪一个像素就重画一遍
+        double k = 1;
+        if (_cfg.CalAutoScale)
+        {
+            for (int pass = 0; pass < 2; pass++) // 标题栏和行程列表也跟着放大，会挤掉一点格子，再算一遍
+            {
+                var (cw, ch, _) = Geo(w, h, mode, k);
+                k = Math.Clamp(1 + (Math.Min(cw / 41, ch / 38) - 1) * 0.7, 1, 2);
+            }
+            k = Math.Floor(k * 10 + 1e-6) / 10;
+        }
+        var (_, cellH, calH) = Geo(w, h, mode, k);
+        bool lunar = _cfg.CalLunar && cellH >= 32 * k;
+        if (mode == _mode && lunar == _lunar && k == _k && Math.Abs(cellH - _cellH) < 4 && _bg.Children.Count > 0) return;
+        _mode = mode; _lunar = lunar; _k = k; _ks = Soft(k); _cellH = cellH;
+        _headRow.Height = new GridLength(HeadH * _ks); _head.Height = HeadH * _ks;
+        _week.Height = WeekH * _ks;
+        // 标题栏、行程列表整块放大（排版不变，只是变大）
+        var zoom = _ks > 1 ? new ScaleTransform(_ks, _ks) : null;
+        foreach (var fe in new[] { _headDock, _listPanel })
+        {
+            fe.LayoutTransform = zoom;
+            TextOptions.SetTextFormattingMode(fe, zoom == null ? TextFormattingMode.Display : TextFormattingMode.Ideal);
+        }
+        _tipText.FontSize = 12 * _ks; _tipText.LineHeight = 19 * _ks;
+        _body.ColumnDefinitions[1].Width = new GridLength(mode == ListMode.Right ? ListW * _ks : 0);
         _body.RowDefinitions[0].Height = mode == ListMode.Below ? new GridLength(calH) : new GridLength(1, GridUnitType.Star);
         _body.RowDefinitions[1].Height = mode == ListMode.Below ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Grid.SetColumn(_listBox, mode == ListMode.Right ? 1 : 0);
@@ -229,6 +255,18 @@ public sealed class CalendarWidget : Window
         _listBox.BorderThickness = mode == ListMode.Right ? new Thickness(1, 0, 0, 0) : new Thickness(0, 1, 0, 0);
         _listBox.Visibility = mode == ListMode.None ? Visibility.Collapsed : Visibility.Visible;
         Render();
+    }
+
+    static double Soft(double k) => 1 + (k - 1) * 0.6;
+
+    /// <summary>放大 k 倍时：格子宽、格子高、月历那块的高度。</summary>
+    static (double, double, double) Geo(double w, double h, ListMode mode, double k)
+    {
+        double ks = Soft(k);
+        double bodyH = h - HeadH * ks - 2;
+        double calH = mode == ListMode.Below ? Math.Min(bodyH - 110 * ks, 300 * ks) : bodyH;
+        double calW = w - 2 - (mode == ListMode.Right ? ListW * ks : 0) - 12;
+        return (calW / 7, (calH - WeekH * ks - 8) / 6, calH);
     }
 
     // ================= 画 =================
@@ -239,7 +277,7 @@ public sealed class CalendarWidget : Window
 
         _week.Children.Clear();
         for (int i = 0; i < 7; i++)
-            _week.Children.Add(new TextBlock { Text = CalText.WeekShort((DayOfWeek)(((int)WeekStart + i) % 7)), FontSize = 11, Foreground = Res<Brush>("TextSub"), HorizontalAlignment = HorizontalAlignment.Center });
+            _week.Children.Add(new TextBlock { Text = CalText.WeekShort((DayOfWeek)(((int)WeekStart + i) % 7)), FontSize = 11 * _ks, Foreground = Res<Brush>("TextSub"), HorizontalAlignment = HorizontalAlignment.Center });
 
         DateTime? a = null, b = null;
         if (_selA is { } sa && _selB is { } sb) (a, b) = sa <= sb ? (sa, sb) : (sb, sa);
@@ -260,7 +298,8 @@ public sealed class CalendarWidget : Window
         var id = _cfg.CalIndonesia ? Holidays.Indonesia(d) : null;
         var cn = _cfg.CalChina ? Holidays.China(d) : null;
         bool sel = a is { } sa && b is { } sb && d >= sa && d <= sb;
-        double numTop = _lunar ? 3 : 0;
+        // 有农历时：数字 + 农历这一块（约 37k 高）在格子里上下居中，格子再高也不会都挤在上面
+        double k = _k, numTop = _lunar ? Math.Max(3 * k, (_cellH - 37 * k) / 2) : 0;
         var numV = _lunar ? VerticalAlignment.Top : VerticalAlignment.Center;
 
         // 底层：红日子整格、选中、悬停、今天的绿圈、休/班角标、行程小条
@@ -279,34 +318,34 @@ public sealed class CalendarWidget : Window
         if (_picked == d) { cellBg.BorderBrush = B(TripC); cellBg.BorderThickness = new Thickness(1.5); }
         bg.Children.Add(cellBg);
         if (d == Today)
-            bg.Children.Add(new Border { Width = 24, Height = 20, CornerRadius = new CornerRadius(10), Background = Res<Brush>("Green"), Margin = new Thickness(0, numTop, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = numV });
+            bg.Children.Add(new Border { Width = 24 * k, Height = 20 * k, CornerRadius = new CornerRadius(10 * k), Background = Res<Brush>("Green"), Margin = new Thickness(0, numTop, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = numV });
         if (cn is { } c && (!_lunar || !L.IsZh)) // 小尺寸格子窄、外文角标太宽，会压住数字：只点一个小圆点（绿 = 休，灰 = 班）
-            bg.Children.Add(new Border { Width = 5, Height = 5, CornerRadius = new CornerRadius(2.5), Background = B(c.Off ? "#2EE07A" : "#B0B6BF"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 2, 0) });
+            bg.Children.Add(new Border { Width = 5 * k, Height = 5 * k, CornerRadius = new CornerRadius(2.5 * k), Background = B(c.Off ? "#2EE07A" : "#B0B6BF"), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2 * k, 2 * k, 0) });
         else if (cn is { } c2)
             bg.Children.Add(new Border
             {
-                Background = B(c2.Off ? "#07A548" : "#6B7280"), CornerRadius = new CornerRadius(3), Padding = new Thickness(1.5, 0, 1.5, 0.5),
+                Background = B(c2.Off ? "#07A548" : "#6B7280"), CornerRadius = new CornerRadius(3 * k), Padding = new Thickness(1.5 * k, 0, 1.5 * k, 0.5 * k),
                 HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 0, 0),
-                Child = new TextBlock { Text = c2.Off ? L.T("休") : L.T("班"), FontSize = 7.5, FontWeight = FontWeights.Bold },
+                Child = new TextBlock { Text = c2.Off ? L.T("休") : L.T("班"), FontSize = 7.5 * k, FontWeight = FontWeights.Bold },
             });
         if (TripStore.Get(d) != null)
             bg.Children.Add(_lunar
-                ? new Border { Width = 14, Height = 3, CornerRadius = new CornerRadius(1.5), Background = B(TripC), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 3) }
-                : new Border { Width = 4, Height = 4, CornerRadius = new CornerRadius(2), Background = B(TripC), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 1) });
+                ? new Border { Width = 14 * k, Height = 3 * k, CornerRadius = new CornerRadius(1.5 * k), Background = B(TripC), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, Math.Min(numTop + 37 * k, _cellH - 6 * k), 0, 0) }
+                : new Border { Width = 4 * k, Height = 4 * k, CornerRadius = new CornerRadius(2 * k), Background = B(TripC), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 1) });
 
         // 上层：日期数字、农历
         var fg = new Grid();
         fg.Children.Add(new Border
         {
-            Width = 24, Height = 20, Margin = new Thickness(0, numTop, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = numV,
-            Child = new TextBlock { Text = d.Day.ToString(), FontSize = _lunar ? 13 : 12, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+            Width = 24 * k, Height = 20 * k, Margin = new Thickness(0, numTop, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = numV,
+            Child = new TextBlock { Text = d.Day.ToString(), FontSize = (_lunar ? 13 : 12) * k, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
         });
         if (_lunar && ChinaCal.InRange(d))
         {
             var fest = ChinaCal.Festival(d);
             fg.Children.Add(new TextBlock
             {
-                Text = fest ?? ChinaCal.Of(d).Cell, FontSize = 9.5, Margin = new Thickness(1, 23, 1, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
+                Text = fest ?? ChinaCal.Of(d).Cell, FontSize = 9.5 * k, Margin = new Thickness(1, numTop + 20 * k, 1, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
                 Foreground = fest != null ? B(Gold) : B("#B0FFFFFF"), FontWeight = fest != null ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis,
             });
         }
@@ -442,6 +481,7 @@ public sealed class CalendarWidget : Window
         Check(L.T("显示中国节假日"), _cfg.CalChina, v => _cfg.CalChina = v);
         Check(L.T("显示印尼红日子"), _cfg.CalIndonesia, v => _cfg.CalIndonesia = v);
         Check(L.T("一周从周一开始"), _cfg.CalMondayFirst, v => _cfg.CalMondayFirst = v);
+        Check(L.T("拉大日历时字也跟着变大"), _cfg.CalAutoScale, v => _cfg.CalAutoScale = v);
         m.Items.Add(new Separator());
         Add(L.T("隐藏日历（点工具条上的“日历”再打开）"), () => HideRequested?.Invoke());
         m.PlacementTarget = at;
