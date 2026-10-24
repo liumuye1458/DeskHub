@@ -23,6 +23,9 @@ public sealed class DeskController : IFenceHost
     readonly Dictionary<string, FenceWindow> _fences = new();
     ClockWindow? _clock;
     public ClockWindow? Clock => _clock;
+    CalendarWidget? _cal;
+    /// <summary>桌面上的日历（隐藏了就是 null）。</summary>
+    public CalendarWidget? CalWidget => _cal;
     List<DesktopItem> _items = new();
     bool _firstRun;
     readonly DispatcherTimer _midnight = new(DispatcherPriority.Background);
@@ -49,7 +52,7 @@ public sealed class DeskController : IFenceHost
         _firstRun = st.Items.Count == 0;
         _src.Changed += () => _ui.BeginInvoke(Refresh);
         _src.Renamed += (a, b) => _ui.BeginInvoke(() => State.Rename(a, b));
-        _midnight.Tick += (_, _) => { Refresh(); CheckArchive(); ScheduleMidnight(); };
+        _midnight.Tick += (_, _) => { Refresh(); CheckArchive(); _cal?.GoToday(); ScheduleMidnight(); };
         _saveSoon.Tick += (_, _) => { _saveSoon.Stop(); State.Save(); };
         _archiveSoon.Tick += (_, _) => { _archiveSoon.Stop(); CheckArchive(); };
         // 插拔显示器、改分辨率时系统会连发好几次通知，中间状态是乱的：等稳定 1.5 秒再处理，期间不保存布局
@@ -72,7 +75,7 @@ public sealed class DeskController : IFenceHost
         InitProfiles();
         _clock = new ClockWindow { ShowSeconds = Cfg.ShowSeconds, Note = Cfg.ClockNote };
         _clock.Moved += () => SaveLayout("clock", _clock);
-        _clock.Clicked += () => Tools?.Calendar(new Rect(_clock.Left, _clock.Top, _clock.ActualWidth, _clock.ActualHeight), WorkAreaOf(_clock));
+        _clock.Clicked += () => { SetCalendarShown(true); _cal?.GoToday(); };
         Place(_clock, "clock");
         _clock.SourceInitialized += (_, _) =>
         {
@@ -89,6 +92,7 @@ public sealed class DeskController : IFenceHost
         foreach (var cf in Cfg.CustomFences) MakeCustom(cf);
         ApplyTexts();
         foreach (var f in _fences.Values) f.Show();
+        if (Cfg.CalShow) MakeCalendar(); // 分区摆好以后再放日历，第一次能找空地
 
         if (Cfg.HideSystemIcons && !Sandbox) DesktopHost.HideSystemIcons();
         Refresh();
@@ -108,6 +112,7 @@ public sealed class DeskController : IFenceHost
         if (!Sandbox) DesktopHost.ShowSystemIcons();
         foreach (var f in _fences.Values) f.Close();
         _clock?.Close();
+        _cal?.Close();
         Tools?.Dispose();
         _src.Dispose();
     }
@@ -122,6 +127,7 @@ public sealed class DeskController : IFenceHost
                 DesktopHost.OnExplorerRestarted(Cfg.HideSystemIcons && !Sandbox);
                 foreach (var f in _fences.Values) DesktopHost.Repin(f);
                 if (_clock != null) DesktopHost.Repin(_clock);
+                if (_cal != null) DesktopHost.Repin(_cal);
                 if (Tools != null) foreach (var w in Tools.DesktopWindows()) DesktopHost.Repin(w);
             });
         }
@@ -221,9 +227,10 @@ public sealed class DeskController : IFenceHost
         if (Cfg.Layout.TryGetValue(key, out var l) && OnScreen(new Rect(l.X, l.Y, Math.Max(l.W, 50), Math.Max(l.H, 50))))
         {
             w.Left = l.X; w.Top = l.Y;
-            if (l.W > 0 && w is FenceWindow) { w.Width = l.W; w.Height = l.H; }
+            if (l.W > 0 && Sized(w)) { w.Width = l.W; w.Height = l.H; }
             return;
         }
+        if (key == "calendar") { PlaceCalendarDefault(w, wa); return; }
         if (!Default.TryGetValue(key, out var d))
         {
             // 自定义分区：先放默认布局里的空白处（项目文件夹下面、冷却区下面），再多就错开叠放
@@ -239,6 +246,49 @@ public sealed class DeskController : IFenceHost
         w.Left = wa.Left + d.X * sx; w.Top = wa.Top + d.Y * sy;
         if (w is FenceWindow) { w.Width = d.Width * sx; w.Height = d.Height * sy; }
     }
+
+    /// <summary>位置之外还要记大小的窗口：分区、日历。</summary>
+    static bool Sized(Window w) => w is FenceWindow or CalendarWidget;
+
+    // ================= 日历 =================
+    /// <summary>第一次出现：找一块不压住分区、时钟、工具条的空地（先右边从上往下，再左边）；标准大小放不下就用小号；都没有就放右上角。</summary>
+    void PlaceCalendarDefault(Window w, Rect wa)
+    {
+        var taken = _fences.Values.Where(f => f.IsVisible).Select(f => new Rect(f.Left, f.Top, f.Width, f.Height)).ToList();
+        if (_clock != null) taken.Add(new Rect(_clock.Left, _clock.Top, _clock.ActualWidth, _clock.ActualHeight));
+        if (Tools?.Dock is { IsVisible: true } dk) taken.Add(new Rect(dk.Left, dk.Top, dk.ActualWidth, dk.ActualHeight));
+        foreach (var (cw, ch) in new[] { (300.0, 290.0), (220.0, 200.0) })
+            foreach (var x in new[] { wa.Right - cw - 16, wa.Left + 16 })
+                for (double y = wa.Top + 16; y + ch <= wa.Bottom - 8; y += 16)
+                {
+                    var r = new Rect(x, y, cw, ch);
+                    var pad = Rect.Inflate(r, 6, 6);
+                    if (taken.Any(t => t.IntersectsWith(pad))) continue;
+                    w.Width = cw; w.Height = ch; w.Left = x; w.Top = y;
+                    return;
+                }
+        w.Width = 300; w.Height = 290;
+        w.Left = wa.Right - 300 - 16; w.Top = wa.Top + 16;
+    }
+
+    void MakeCalendar()
+    {
+        _cal = new CalendarWidget(Cfg);
+        _cal.Moved += () => { if (_cal != null) SaveLayout("calendar", _cal); };
+        _cal.HideRequested += () => SetCalendarShown(false);
+        Place(_cal, "calendar");
+        _cal.Show();
+    }
+
+    /// <summary>显示 / 隐藏桌面上的日历（工具条“日历”、快捷键、设置、日历菜单都走这里）。</summary>
+    public void SetCalendarShown(bool show)
+    {
+        if (Cfg.CalShow != show) { Cfg.CalShow = show; Cfg.Save(); }
+        if (show && _cal == null) MakeCalendar();
+        else if (!show && _cal != null) { _cal.Close(); _cal = null; }
+    }
+
+    public void ToggleCalendar() => SetCalendarShown(_cal == null);
 
     static bool OnScreen(Rect r)
     {
@@ -453,6 +503,7 @@ public sealed class DeskController : IFenceHost
     {
         foreach (var (k, f) in _fences) Place(f, k);
         if (_clock != null) Place(_clock, "clock");
+        if (_cal != null) Place(_cal, "calendar");
         Tools?.Relayout();
         foreach (var f in _fences.Values) f.UpdateLayout();
     }
@@ -526,6 +577,12 @@ public sealed class DeskController : IFenceHost
             double x = Math.Clamp(_clock.Left, wa.Left, Math.Max(wa.Left, wa.Right - w)), y = Math.Clamp(_clock.Top, wa.Top, Math.Max(wa.Top, wa.Bottom - h));
             if (x != _clock.Left || y != _clock.Top) Apply("clock", _clock, new Rect(x, y, 0, 0));
         }
+        if (_cal != null)
+        {
+            double w = Math.Min(_cal.Width, wa.Width), h = Math.Min(_cal.Height, wa.Height);
+            double x = Math.Clamp(_cal.Left, wa.Left, wa.Right - w), y = Math.Clamp(_cal.Top, wa.Top, wa.Bottom - h);
+            if (x != _cal.Left || y != _cal.Top || w != _cal.Width || h != _cal.Height) Apply("calendar", _cal, new Rect(x, y, w, h));
+        }
     }
 
     /// <summary>最多记 10 种组合，太久没用的删掉。</summary>
@@ -557,6 +614,7 @@ public sealed class DeskController : IFenceHost
         var items = Cfg.Layout.ToDictionary(kv => kv.Key, kv => new FenceLayout { X = kv.Value.X, Y = kv.Value.Y, W = kv.Value.W, H = kv.Value.H });
         foreach (var (k, f) in _fences) items[k] = new FenceLayout { X = f.Left, Y = f.Top, W = f.Width, H = f.Height };
         if (_clock != null) items["clock"] = new FenceLayout { X = _clock.Left, Y = _clock.Top };
+        if (_cal != null) items["calendar"] = new FenceLayout { X = _cal.Left, Y = _cal.Top, W = _cal.Width, H = _cal.Height };
         return new SavedLayout
         {
             Name = name, Saved = DateTime.Now, Profile = NewProfile(items),
@@ -653,16 +711,18 @@ public sealed class DeskController : IFenceHost
         Cfg.Layout.Clear();
         foreach (var (k, f) in _fences) Place(f, k);
         if (_clock != null) Place(_clock, "clock");
+        if (_cal != null) Place(_cal, "calendar");
         Tools?.DefaultPositions();
         Cfg.Save();
     }
 
     // ================= 排列（工具条「排列」） =================
-    /// <summary>参与排列的窗口：分区、时钟、桌面便签（工具条不动）。</summary>
+    /// <summary>参与排列的窗口：分区、时钟、日历、桌面便签（工具条不动）。</summary>
     List<(string Key, Window W)> ArrangeTargets()
     {
         var list = _fences.Select(kv => (kv.Key, (Window)kv.Value)).ToList();
         if (_clock != null) list.Insert(0, ("clock", _clock));
+        if (_cal != null) list.Add(("calendar", _cal));
         if (Tools != null) list.AddRange(Tools.NoteEntries());
         return list.Where(t => t.Item2.IsVisible).ToList();
     }
@@ -682,8 +742,8 @@ public sealed class DeskController : IFenceHost
     void Apply(string key, Window w, Rect r)
     {
         w.Left = r.X; w.Top = r.Y;
-        if (w is FenceWindow) { w.Width = r.Width; w.Height = r.Height; }
-        Cfg.Layout[key] = new FenceLayout { X = r.X, Y = r.Y, W = w is FenceWindow ? r.Width : 0, H = w is FenceWindow ? r.Height : 0 };
+        if (Sized(w)) { w.Width = r.Width; w.Height = r.Height; }
+        Cfg.Layout[key] = new FenceLayout { X = r.X, Y = r.Y, W = Sized(w) ? r.Width : 0, H = Sized(w) ? r.Height : 0 };
     }
 
     /// <summary>auto=false 对齐你现有的摆法；auto=true 按推荐方案重排。都以 from（排列前的样子）为起点。</summary>
@@ -712,11 +772,11 @@ public sealed class DeskController : IFenceHost
                     b.Group = f.Zone switch { Zone.Apps => 0, Zone.Folders => 0, Zone.Custom => 1, Zone.Active => 1, _ => 2 };
                     b.Spill = f.Zone == Zone.Custom;
                 }
-                else b.Group = k == "clock" ? 0 : 9;
+                else b.Group = k == "clock" ? 0 : k == "calendar" ? 2 : 9; // 日历：右列最上面，大小不动
                 blocks.Add(b);
             }
             // 列内顺序：左列 时钟、常用软件、项目文件夹；中列 自定义分区、进行中；右列 今天、冷却区
-            int Rank(Block b) => b.Key switch { "clock" => 0, "apps" => 1, "today" => 0, "folders" => 9, "active" => 9, "cold" => 9, _ => 2 };
+            int Rank(Block b) => b.Key switch { "calendar" => -1, "clock" => 0, "apps" => 1, "today" => 0, "folders" => 9, "active" => 9, "cold" => 9, _ => 2 };
             blocks = blocks.OrderBy(Rank).ThenBy(b => Cfg.CustomFences.FindIndex(c => c.Id == b.Key)).ToList();
             var scale = DpiScale();
             if (auto) Arranger.Auto(blocks, wa, avoid, Cfg.ArrangeGap, scale);
@@ -766,7 +826,7 @@ public sealed class DeskController : IFenceHost
     void SaveLayout(string key, Window w)
     {
         if (_displayBusy) return; // 屏幕正在变，窗口位置是乱的，不能存
-        Cfg.Layout[key] = new FenceLayout { X = w.Left, Y = w.Top, W = w is FenceWindow ? w.Width : 0, H = w is FenceWindow ? w.Height : 0 };
+        Cfg.Layout[key] = new FenceLayout { X = w.Left, Y = w.Top, W = Sized(w) ? w.Width : 0, H = Sized(w) ? w.Height : 0 };
         Touch();
         Cfg.Save();
     }
@@ -1154,7 +1214,7 @@ public sealed class DeskController : IFenceHost
             var bg = new System.Windows.Media.LinearGradientBrush(
                 System.Windows.Media.Color.FromRgb(0x2c, 0x4f, 0x73), System.Windows.Media.Color.FromRgb(0xd9, 0xa2, 0x7a), 35);
             dc.DrawRectangle(bg, null, new Rect(0, 0, wa.Width, wa.Height));
-            var wins = _fences.Values.Cast<Window>().Append(_clock!).Concat(Application.Current.Windows.OfType<LearnToast>())
+            var wins = _fences.Values.Cast<Window>().Append(_clock!).Concat(_cal != null ? new Window[] { _cal } : Array.Empty<Window>()).Concat(Application.Current.Windows.OfType<LearnToast>())
                 .Concat(Tools?.DesktopWindows() ?? Enumerable.Empty<Window>()).Concat(Application.Current.Windows.OfType<ArrangeToast>().Where(t => t.IsVisible));
             foreach (var w in wins)
             {

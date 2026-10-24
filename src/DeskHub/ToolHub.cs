@@ -36,8 +36,6 @@ public sealed class ToolHub : IDisposable
     CalcWindow? _calc;
     DockWindow? _dock;
     GuideManager? _memo;
-    CalendarWindow? _calendar;
-    DateTime _calendarClosed;
     VaultWindow? _vault;
     readonly Dictionary<string, GuideWindow> _guides = new();
     readonly DispatcherTimer _remind = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(30) };
@@ -150,21 +148,11 @@ public sealed class ToolHub : IDisposable
         _memo.Popup();
     }
 
-    /// <summary>打开 / 收起日历。anchor = 时钟的位置（日历出现在它下面）；空 = 放在屏幕中间。</summary>
-    public void Calendar(Rect? anchor = null, Rect? workArea = null)
-    {
-        if (_calendar != null) { _calendar.Close(); return; }
-        // 点时钟时日历先因为失去焦点关掉了，这一下是想关，不是想再打开
-        if (DateTime.Now - _calendarClosed < TimeSpan.FromMilliseconds(400)) return;
-        _calendar = new CalendarWindow(_c.Cfg);
-        _calendar.Closed += (_, _) => { _calendar = null; _calendarClosed = DateTime.Now; Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, App.TrimMemory); };
-        _calendar.ShowNear(anchor, workArea ?? SystemParameters.WorkArea);
-    }
+    /// <summary>显示 / 隐藏桌面上的日历。</summary>
+    public void Calendar() => _c.ToggleCalendar();
 
-    /// <summary>设置改了：开着的日历重画。</summary>
-    public void RefreshCalendar() => _calendar?.Refresh();
-
-    public CalendarWindow? CalendarForTest => _calendar;
+    /// <summary>设置改了：日历重画。</summary>
+    public void RefreshCalendar() => _c.CalWidget?.Refresh();
 
     void CheckTrips() => Core.TripStore.CheckReminders(DateTime.Now, SystemParameters.WorkArea);
 
@@ -420,7 +408,6 @@ public sealed class ToolHub : IDisposable
         Core.GuideStore.Changed -= SyncGuides;
         foreach (var g in _guides.Values) g.Close();
         _memo?.Close();
-        _calendar?.Close();
         _vault?.Close();
         Core.SecretClipboard.ClearNow();
         _arrToast?.Close();

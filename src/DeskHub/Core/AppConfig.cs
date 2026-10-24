@@ -93,6 +93,8 @@ public sealed class AppConfig
     public string ClockNote { get; set; } = "";
 
     // 日历
+    /// <summary>桌面上显示日历（关掉 = 隐藏，工具条“日历”再打开）。</summary>
+    public bool CalShow { get; set; } = true;
     public bool CalLunar { get; set; } = true;
     /// <summary>中国放假 / 调休上班（休 / 班）。</summary>
     public bool CalChina { get; set; } = true;

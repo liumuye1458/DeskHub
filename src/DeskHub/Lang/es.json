@@ -690,5 +690,16 @@
  "点一下打开日历 · 按住拖动可以挪位置": "Haz clic para abrir el calendario · Arrastra para mover",
  "按住任意地方拖动；点最右边的箭头收到屏幕边上": "Arrastra desde cualquier punto; pulsa la flecha de la derecha para guardarla en el borde",
  "收到屏幕边上（点边上的小把手再拿出来）": "Guardar en el borde (pulsa la pestaña para recuperarla)",
- "展开工具条 · 按住上下拖可以挪位置": "Mostrar la barra · Arrastra arriba o abajo para moverla"
+ "展开工具条 · 按住上下拖可以挪位置": "Mostrar la barra · Arrastra arriba o abajo para moverla",
+ "日历菜单": "Menú del calendario",
+ "按住标题栏拖动 · 右下角拉大小 · 拉宽会显示接下来的行程": "Arrastra el título para mover · Arrastra la esquina para cambiar el tamaño · Ensánchalo para ver los próximos viajes",
+ "点这里或右键取消": "Haz clic aquí o clic derecho para quitar",
+ "回到今天": "Volver a hoy",
+ "显示农历": "Mostrar calendario lunar",
+ "显示中国节假日": "Mostrar festivos de China",
+ "显示印尼红日子": "Mostrar festivos de Indonesia",
+ "一周从周一开始": "La semana empieza el lunes",
+ "隐藏日历（点工具条上的“日历”再打开）": "Ocultar calendario (pulsa «Calendario» en la barra para volver a mostrarlo)",
+ "日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。": "El calendario se queda en el escritorio. Como las vallas, arrastra el título para moverlo y la esquina para cambiar su tamaño; ensánchalo para ver los próximos viajes a la derecha. «Calendario» en la barra (o tu atajo) lo oculta o muestra.",
+ "在桌面上显示日历": "Mostrar el calendario en el escritorio"
 }

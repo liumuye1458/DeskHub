@@ -162,6 +162,8 @@ public partial class App : Application
         _layouts.Popup();
     }
 
+    UI.TripEditor? _calEd;
+
     void OpenSettings(string page)
     {
         if (_settings != null) { _settings.Activate(); return; }
@@ -418,19 +420,22 @@ public partial class App : Application
                             }
                         }
                         break;
-                    case "cal": // 日历：today 日期 / open / view 年-月 / sel 日期 日期 / hover 日期 / edit 日期 / trip 日期|文字|提醒 / shot 文件 / status / terms 年 / lunar 日期 / remind 日期 / set 项 0|1
+                    case "cal": // 日历：today 日期 / open / hide / size 宽 高 / view 年-月 / sel 日期 日期 / hover 日期 / edit 日期 / edshot 文件 / trip 日期|文字|提醒 / shot 文件 / status / terms 年 / lunar 日期 / remind 日期 / set 项 0|1
                         {
                             var a2 = parts.Length > 2 ? parts[2] : "";
                             DateTime Dt(string x) => DateTime.ParseExact(x, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-                            var cw = _tools!.CalendarForTest;
+                            var cw = _ctl!.CalWidget;
                             switch (parts[1])
                             {
-                                case "today": UI.CalendarWindow.TodayOverride = Dt(a2); break;
-                                case "open": _tools.Calendar(); _tools.CalendarForTest!.KeepOpenForTest(); await Task.Delay(300); break;
+                                case "today": UI.CalendarWidget.TodayOverride = Dt(a2); cw?.GoToday(); break;
+                                case "open": _ctl.SetCalendarShown(true); await Task.Delay(300); report.Add($"cal open → {_ctl.CalWidget!.Left:0},{_ctl.CalWidget.Top:0} {_ctl.CalWidget.Width:0}x{_ctl.CalWidget.Height:0}"); break;
+                                case "hide": _ctl.SetCalendarShown(false); report.Add($"cal hide → shown={_ctl.CalWidget != null} cfg={_ctl.Cfg.CalShow}"); break;
+                                case "size": { var v = a2.Split(' '); cw!.Width = double.Parse(v[0]); cw.Height = double.Parse(v[1]); await Task.Delay(200); } break;
                                 case "view": cw!.TestView(DateTime.ParseExact(a2 + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)); break;
                                 case "sel": { var v = a2.Split(' '); cw!.TestSelect(Dt(v[0]), Dt(v[1])); } break;
                                 case "hover": cw!.TestHover(Dt(a2)); break;
-                                case "edit": cw!.TestEdit(Dt(a2)); break;
+                                case "edit": _calEd = cw!.TestEdit(Dt(a2)); _calEd?.KeepOpenForTest(); await Task.Delay(300); break;
+                                case "edshot": RenderWindow(_calEd!, a2); _calEd!.Close(); break;
                                 case "trip": { var f = a2.Split('|'); Core.TripStore.Set(Dt(f[0]), f[1], f.Length < 3 || f[2] == "1"); } break;
                                 case "shot": await Task.Delay(300); RenderWindow(cw!, a2); break;
                                 case "status": report.Add("cal status → " + cw!.TestStatus); break;
@@ -446,7 +451,7 @@ public partial class App : Application
                                     {
                                         var v = a2.Split(' '); bool on = v[1] == "1"; var cfg = _ctl!.Cfg;
                                         switch (v[0]) { case "lunar": cfg.CalLunar = on; break; case "cn": cfg.CalChina = on; break; case "id": cfg.CalIndonesia = on; break; case "mon": cfg.CalMondayFirst = on; break; }
-                                        _tools.RefreshCalendar();
+                                        _tools!.RefreshCalendar();
                                     }
                                     break;
                             }

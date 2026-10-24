@@ -690,5 +690,16 @@
  "点一下打开日历 · 按住拖动可以挪位置": "Click to open the calendar · Drag to move",
  "按住任意地方拖动；点最右边的箭头收到屏幕边上": "Drag from anywhere; click the arrow on the right to tuck it into the screen edge",
  "收到屏幕边上（点边上的小把手再拿出来）": "Tuck into the screen edge (click the small tab to bring it back)",
- "展开工具条 · 按住上下拖可以挪位置": "Show the toolbar · Drag up or down to move"
+ "展开工具条 · 按住上下拖可以挪位置": "Show the toolbar · Drag up or down to move",
+ "日历菜单": "Calendar menu",
+ "按住标题栏拖动 · 右下角拉大小 · 拉宽会显示接下来的行程": "Drag the title bar to move · Drag the corner to resize · Make it wider to see upcoming trips",
+ "点这里或右键取消": "Click here or right-click to clear",
+ "回到今天": "Back to today",
+ "显示农历": "Show lunar calendar",
+ "显示中国节假日": "Show China holidays",
+ "显示印尼红日子": "Show Indonesia holidays",
+ "一周从周一开始": "Week starts on Monday",
+ "隐藏日历（点工具条上的“日历”再打开）": "Hide calendar (click “Calendar” on the toolbar to show it again)",
+ "日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。": "The calendar stays on the desktop. Like fences, drag its title bar to move it and its corner to resize; make it wider to list upcoming trips on the right. “Calendar” on the toolbar (or your shortcut) hides / shows it.",
+ "在桌面上显示日历": "Show the calendar on the desktop"
 }

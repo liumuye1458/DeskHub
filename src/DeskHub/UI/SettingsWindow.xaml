@@ -120,8 +120,9 @@
         <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
 
         <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,24,0,4">日历</TextBlock>
-        <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="点一下桌面时钟就能打开日历；也可以点工具条上的“日历”，或在“快捷键”里给它设一个组合键。"/>
-        <CheckBox x:Name="CalLunar" Style="{StaticResource Toggle}" Margin="0,12,0,4" Content="显示农历（含节气、春节中秋等传统节日）"/>
+        <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。"/>
+        <CheckBox x:Name="CalShow" Style="{StaticResource Toggle}" Margin="0,12,0,4" Content="在桌面上显示日历"/>
+        <CheckBox x:Name="CalLunar" Style="{StaticResource Toggle}" Margin="0,8,0,4" Content="显示农历（含节气、春节中秋等传统节日）"/>
         <CheckBox x:Name="CalChina" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示中国节假日（放假标“休”，调休上班标“班”）"/>
         <TextBlock x:Name="CalChinaHint" Foreground="#999" FontSize="12" Margin="44,0,0,0" TextWrapping="Wrap"/>
         <CheckBox x:Name="CalIndonesia" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示印尼红日子（整格标红：深红 = 法定假日，浅红 = 联合休假）"/>

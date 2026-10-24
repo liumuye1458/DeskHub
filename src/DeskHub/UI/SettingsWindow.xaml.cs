@@ -76,6 +76,7 @@ public partial class SettingsWindow : Window
         LangBox.SelectedItem = LangBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == cfg.Language) ?? LangBox.Items[0];
         AutoStart.IsChecked = IsAutoStart();
         AutoStart.IsEnabled = !c.Sandbox;
+        CalShow.IsChecked = cfg.CalShow;
         CalLunar.IsChecked = cfg.CalLunar;
         CalChina.IsChecked = cfg.CalChina;
         CalIndonesia.IsChecked = cfg.CalIndonesia;
@@ -208,6 +209,7 @@ public partial class SettingsWindow : Window
         if (!_c.Sandbox) SetAutoStart(AutoStart.IsChecked == true);
         _c.ApplyTexts();
         _c.Refresh();
+        _c.SetCalendarShown(CalShow.IsChecked == true);
         _c.Tools?.RefreshCalendar();
         if (_c.Tools?.ApplyHotkeys() is { Count: > 0 } bad)
         {
