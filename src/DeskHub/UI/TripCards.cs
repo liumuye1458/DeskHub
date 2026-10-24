@@ -146,7 +146,7 @@ public static class TripCard
                 DockPanel.SetDock(tm, Dock.Left);
                 dp.Children.Add(tm);
             }
-            var tx = T(t.Text, 12.5, th.Ink); tx.TextWrapping = TextWrapping.Wrap; tx.TextTrimming = TextTrimming.None; tx.MaxHeight = 38;
+            var tx = T(t.Text, 12.5, th.Ink); tx.TextWrapping = TextWrapping.Wrap; tx.TextTrimming = TextTrimming.CharacterEllipsis; tx.MaxHeight = 56; // 最多三行
             dp.Children.Add(tx);
             sp.Children.Add(dp);
             if (t.Place.Length > 0) sp.Children.Add(T("@ " + t.Place, 10.5, th.Sub));

@@ -56,7 +56,7 @@ public sealed class CalendarWidget : Window
     readonly Grid _cells = new() { Background = Brushes.Transparent, Cursor = Cursors.Hand };
     readonly Grid _body = new();
     readonly Border _listBox, _head;
-    readonly FrameworkElement _headDock, _listPanel;
+    readonly FrameworkElement _headDock;
     readonly RowDefinition _headRow = new() { Height = new GridLength(HeadH) };
     readonly StackPanel _items = new();
     readonly Popup _tip = new() { AllowsTransparency = true, Placement = PlacementMode.Relative, StaysOpen = true };
@@ -167,7 +167,6 @@ public sealed class CalendarWidget : Window
         listPanel.Children.Add(drop);
         listPanel.Children.Add(new ScrollViewer { Content = _items, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden });
         listPanel.Effect = Res<Effect>("TextShadow");
-        _listPanel = listPanel;
         _listBox = new Border { BorderBrush = Res<Brush>("FenceLine"), Child = listPanel };
 
         _body.ColumnDefinitions.Add(new ColumnDefinition());
@@ -262,13 +261,10 @@ public sealed class CalendarWidget : Window
         _chipRows = lunar ? Math.Clamp((int)((cellH - 38 * k) / (13 * Soft(k))), 0, 3) : 0;
         _headRow.Height = new GridLength(HeadH * _ks); _head.Height = HeadH * _ks;
         _week.Height = WeekH * _ks;
-        // 标题栏、行程列表整块放大（排版不变，只是变大）
+        // 标题栏整块放大（排版不变，只是变大）；行程列表字号不变，只是变宽，拉大后一条能写得更全
         var zoom = _ks > 1 ? new ScaleTransform(_ks, _ks) : null;
-        foreach (var fe in new[] { _headDock, _listPanel })
-        {
-            fe.LayoutTransform = zoom;
-            TextOptions.SetTextFormattingMode(fe, zoom == null ? TextFormattingMode.Display : TextFormattingMode.Ideal);
-        }
+        _headDock.LayoutTransform = zoom;
+        TextOptions.SetTextFormattingMode(_headDock, zoom == null ? TextFormattingMode.Display : TextFormattingMode.Ideal);
         _tipText.FontSize = 12 * _ks; _tipText.LineHeight = 19 * _ks;
         _body.ColumnDefinitions[1].Width = new GridLength(mode == ListMode.Right ? ListW * _ks : 0);
         _body.RowDefinitions[0].Height = mode == ListMode.Below ? new GridLength(calH) : new GridLength(1, GridUnitType.Star);
