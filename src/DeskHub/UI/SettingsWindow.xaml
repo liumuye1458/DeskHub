@@ -21,6 +21,7 @@
         <RadioButton x:Name="NavFlow" Style="{StaticResource NavItem}" GroupName="nav" Content="流转与归档"/>
         <RadioButton x:Name="NavKeys" Style="{StaticResource NavItem}" GroupName="nav" Content="快捷键"/>
         <RadioButton x:Name="NavGeneral" Style="{StaticResource NavItem}" GroupName="nav" Content="常规"/>
+        <RadioButton x:Name="NavAi" Style="{StaticResource NavItem}" GroupName="nav" Content="智能识别"/>
         <RadioButton x:Name="NavAbout" Style="{StaticResource NavItem}" GroupName="nav" Content="关于"/>
       </StackPanel>
     </Border>
@@ -141,12 +142,45 @@
       </StackPanel>
     </ScrollViewer>
 
+    <!-- ========== 智能识别（AI 服务） ========== -->
+    <ScrollViewer x:Name="PageAi" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="26,18" Visibility="Collapsed">
+      <StackPanel>
+        <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,0,0,6">智能识别日程</TextBlock>
+        <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Text="把飞猪 / 携程订单截图、聊天记录、订单短信拖到日历上（或在日历上按 Ctrl+V），自动找出哪天要干什么，确认后加进日历。"/>
+        <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Margin="0,6,0,0" Text="下面填一个“OpenAI 兼容格式”的 AI 服务就能用 AI 来看：公司一体机、OpenAI、Claude、DeepSeek、通义千问、Kimi、本机 Ollama 等都支持这种格式。地址空着就用本机识别（不联网，准确度一般）。"/>
+
+        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+          <TextBlock Text="常用服务" Width="70" VerticalAlignment="Center"/>
+          <ComboBox x:Name="AiPreset" Width="260" Height="28" VerticalContentAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <TextBlock Text="地址" Width="70" VerticalAlignment="Center"/>
+          <TextBox x:Name="AiUrl" Width="420" Height="28" VerticalContentAlignment="Center" Style="{StaticResource WinTextBox}"/>
+        </StackPanel>
+        <TextBlock x:Name="AiUrlHint" Foreground="#999" FontSize="12" Margin="70,4,0,0" TextWrapping="Wrap" Text="一般填到 /v1 为止，例如 http://192.168.1.10:11434/v1"/>
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <TextBlock Text="密钥" Width="70" VerticalAlignment="Center"/>
+          <PasswordBox x:Name="AiKey" Width="420" Height="28" VerticalContentAlignment="Center" Padding="6,0"/>
+        </StackPanel>
+        <TextBlock Foreground="#999" FontSize="12" Margin="70,4,0,0" TextWrapping="Wrap" Text="公司一体机、本机 Ollama 一般不用密钥，空着就行。密钥加密保存在本机，只有这台电脑的这个账户能解开。"/>
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <TextBlock Text="模型" Width="70" VerticalAlignment="Center"/>
+          <ComboBox x:Name="AiModel" Width="300" Height="28" IsEditable="True" VerticalContentAlignment="Center"/>
+          <Button x:Name="AiTest" Content="测试连接 / 读取模型" Style="{StaticResource BtnW}" Margin="10,0,0,0"/>
+        </StackPanel>
+        <TextBlock x:Name="AiTestHint" Foreground="#999" FontSize="12" Margin="70,6,0,0" TextWrapping="Wrap" Text="能看图的模型（例如带 vision / vl 的）可以直接看截图；看不了图的，会先在本机把截图识成文字再交给它。"/>
+
+        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#222" Margin="0,22,0,4">隐私</TextBlock>
+        <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Text="只有你点“识别”的时候，丢进来的文字和截图才会发给上面这个服务，平时不联网。用公司一体机或本机 Ollama，内容不出公司 / 不出电脑；用外面的服务，内容会发到对方服务器。"/>
+      </StackPanel>
+    </ScrollViewer>
+
     <!-- ========== 关于 ========== -->
     <StackPanel x:Name="PageAbout" Grid.Column="1" Margin="26,18" Visibility="Collapsed">
       <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">New B Desk</TextBlock>
       <TextBlock x:Name="VersionText" Foreground="#999" Margin="0,6,0,0"/>
       <TextBlock Foreground="#666" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="22">
-        纯本机工具，不联网、不上报、没有后台服务。<LineBreak/>
+        纯本机工具，不上报、没有后台服务；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。<LineBreak/>
         数据位置：<Run x:Name="DataDirRun"/>
       </TextBlock>
       <Button x:Name="OpenData" Content="打开数据文件夹" Style="{StaticResource BtnW}" HorizontalAlignment="Left" Margin="0,12,0,0"/>

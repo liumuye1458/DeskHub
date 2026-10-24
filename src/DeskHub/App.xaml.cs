@@ -163,6 +163,7 @@ public partial class App : Application
     }
 
     UI.TripEditor? _calEd;
+    UI.TripImportWindow? _calImp;
 
     void OpenSettings(string page)
     {
@@ -436,7 +437,25 @@ public partial class App : Application
                                 case "hover": cw!.TestHover(Dt(a2)); break;
                                 case "edit": _calEd = cw!.TestEdit(Dt(a2)); _calEd?.KeepOpenForTest(); await Task.Delay(300); break;
                                 case "edshot": RenderWindow(_calEd!, a2); _calEd!.Close(); break;
-                                case "trip": { var f = a2.Split('|'); Core.TripStore.Set(Dt(f[0]), f[1], f.Length < 3 || f[2] == "1"); } break;
+                                case "trip": { var f = a2.Split('|'); Core.TripStore.Save(null, Dt(f[0]), f[1], f.Length < 3 || f[2] == "1"); } break;
+                                case "trips": report.Add("trips → " + string.Join(" / ", Core.TripStore.Trips.Select(t => $"{t.Date} {t.Display}"))); break;
+                                // 智能识别：import 打开 / imptext 文字 / impimg 图片路径 / imprun 识别 / impstatus / impshot 文件 / impadd 加入
+                                case "import": _calImp = cw!.TestImport(); await Task.Delay(300); break;
+                                case "imptext": _calImp!.TestText(a2); break;
+                                case "impimg": _calImp!.AddFile(a2); break;
+                                case "imprun": await _calImp!.Run(); break;
+                                case "impstatus": report.Add("import → " + _calImp!.TestStatus); break;
+                                case "impshot": await Task.Delay(200); RenderWindow(_calImp!, a2); break;
+                                case "impadd": _calImp!.TestAdd(); _calImp = null; break;
+                                case "ocr": report.Add("ocr → " + (await Core.TripAi.Ocr(System.IO.File.ReadAllBytes(a2))).Replace("\n", " ⏎ ")); break;
+                                case "rules": report.Add("rules → " + string.Join(" / ", Core.TripRules.Parse(a2.Replace("\\n", "\n"), UI.CalendarWidget.TodayOverride ?? DateTime.Today).Select(d => $"{d.Day:yyyy-MM-dd} {d.Time} {d.Text}"))); break;
+                                case "ai": // ai 地址|模型|密钥
+                                    {
+                                        var f = a2.Split('|'); var cfg = _ctl!.Cfg;
+                                        cfg.AiUrl = f[0]; cfg.AiModel = f.Length > 1 ? f[1] : ""; cfg.AiKey = Core.Secret.Protect(f.Length > 2 ? f[2] : "");
+                                        report.Add($"ai → {cfg.AiUrl} {cfg.AiModel} key={(Core.Secret.Unprotect(cfg.AiKey) == (f.Length > 2 ? f[2] : "") ? "ok" : "BAD")}");
+                                    }
+                                    break;
                                 case "shot": await Task.Delay(300); RenderWindow(cw!, a2); break;
                                 case "status": report.Add("cal status → " + cw!.TestStatus); break;
                                 case "terms": report.Add($"terms {a2}: " + string.Join(" ", Core.ChinaCal.TermsOf(int.Parse(a2)).Select(kv => $"{kv.Key:MM-dd}{kv.Value}"))); break;

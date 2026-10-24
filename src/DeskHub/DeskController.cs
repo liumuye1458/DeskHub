@@ -276,6 +276,7 @@ public sealed class DeskController : IFenceHost
         _cal = new CalendarWidget(Cfg);
         _cal.Moved += () => { if (_cal != null) SaveLayout("calendar", _cal); };
         _cal.HideRequested += () => SetCalendarShown(false);
+        _cal.AiSettingsRequested += () => OpenSettings("ai");
         Place(_cal, "calendar");
         _cal.Show();
     }

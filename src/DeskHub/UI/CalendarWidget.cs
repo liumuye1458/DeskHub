@@ -31,6 +31,8 @@ public sealed class CalendarWidget : Window
     public event Action? Moved;
     /// <summary>菜单里点了“隐藏日历”。</summary>
     public event Action? HideRequested;
+    /// <summary>智能识别窗口里点了“去配置 AI”。</summary>
+    public event Action? AiSettingsRequested;
 
     enum ListMode { None, Right, Below }
 
@@ -55,6 +57,7 @@ public sealed class CalendarWidget : Window
     readonly Popup _tip = new() { AllowsTransparency = true, Placement = PlacementMode.Relative, StaysOpen = true };
     readonly TextBlock _tipText = new() { FontSize = 12, LineHeight = 19, Foreground = B("#333333") };
     TripEditor? _editor;
+    TripImportWindow? _import;
 
     public CalendarWidget(AppConfig cfg)
     {
@@ -148,6 +151,15 @@ public sealed class CalendarWidget : Window
         var listPanel = new DockPanel { Margin = new Thickness(12, 8, 10, 6) };
         DockPanel.SetDock(listHead, Dock.Top);
         listPanel.Children.Add(listHead);
+        // 底下一块虚线框：点它、往日历上拖截图、Ctrl+V 都能智能识别
+        var drop = new Grid { Margin = new Thickness(0, 6, 0, 0), Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = L.T("把飞猪 / 携程订单截图、聊天记录拖到日历上，或者在日历上按 Ctrl+V，自动找出哪天要干什么") };
+        drop.Children.Add(new Rectangle { Stroke = B("#66FFFFFF"), StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 4, 3 }, RadiusX = 5, RadiusY = 5 });
+        drop.Children.Add(new TextBlock { Text = "✨ " + L.T("拖截图进来，自动识别日程"), Foreground = B(Up), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(8, 7, 8, 7) });
+        drop.MouseEnter += (_, _) => drop.Background = Res<Brush>("ItemHover");
+        drop.MouseLeave += (_, _) => drop.Background = Brushes.Transparent;
+        drop.MouseLeftButtonUp += (_, _) => OpenImport(null);
+        DockPanel.SetDock(drop, Dock.Bottom);
+        listPanel.Children.Add(drop);
         listPanel.Children.Add(new ScrollViewer { Content = _items, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden });
         listPanel.Effect = Res<Effect>("TextShadow");
         _listPanel = listPanel;
@@ -193,8 +205,12 @@ public sealed class CalendarWidget : Window
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
         SizeChanged += (_, _) => Relayout();
         KeyDown += OnKey;
+        // 截图、文字、图片文件拖到日历上 → 智能识别
+        AllowDrop = true;
+        DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.Bitmap) || e.Data.GetDataPresent(DataFormats.UnicodeText) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+        Drop += (_, e) => { OpenImport(e.Data); e.Handled = true; };
         TripStore.Changed += Render;
-        Closed += (_, _) => { TripStore.Changed -= Render; _editor?.Close(); _tip.IsOpen = false; };
+        Closed += (_, _) => { TripStore.Changed -= Render; _editor?.Close(); _import?.Close(); _tip.IsOpen = false; };
         Relayout();
     }
 
@@ -328,7 +344,7 @@ public sealed class CalendarWidget : Window
                 HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 0, 0),
                 Child = new TextBlock { Text = c2.Off ? L.T("休") : L.T("班"), FontSize = 7.5 * k, FontWeight = FontWeights.Bold },
             });
-        if (TripStore.Get(d) != null)
+        if (TripStore.Any(d))
             bg.Children.Add(_lunar
                 ? new Border { Width = 14 * k, Height = 3 * k, CornerRadius = new CornerRadius(1.5 * k), Background = B(TripC), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, Math.Min(numTop + 37 * k, _cellH - 6 * k), 0, 0) }
                 : new Border { Width = 4 * k, Height = 4 * k, CornerRadius = new CornerRadius(2 * k), Background = B(TripC), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 1) });
@@ -393,7 +409,7 @@ public sealed class CalendarWidget : Window
         var list = TripStore.Upcoming(Today).ToList();
         if (list.Count == 0)
         {
-            _items.Children.Add(new TextBlock { Text = L.T("还没有行程。点日历上任意一天，写一句话就记下了。"), Foreground = Res<Brush>("TextSub"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, LineHeight = 18, Margin = new Thickness(0, 4, 0, 0) });
+            _items.Children.Add(new TextBlock { Text = L.T("还没有行程。点日历上任意一天写一句；也可以把订单截图、聊天记录拖进来自动识别。"), Foreground = Res<Brush>("TextSub"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, LineHeight = 18, Margin = new Thickness(0, 4, 0, 0) });
             return;
         }
         foreach (var t in list)
@@ -406,9 +422,9 @@ public sealed class CalendarWidget : Window
             top.Children.Add(new TextBlock { Text = CalText.Short(d), Foreground = Res<Brush>("TextSub"), FontSize = 10.5 });
             var sp = new StackPanel();
             sp.Children.Add(top);
-            sp.Children.Add(new TextBlock { Text = t.Text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0), ToolTip = t.Text });
+            sp.Children.Add(new TextBlock { Text = t.Display, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0), ToolTip = t.Display });
             var item = new Border { Padding = new Thickness(0, 5, 0, 6), BorderBrush = Res<Brush>("FenceLine"), BorderThickness = new Thickness(0, 0, 0, 1), Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = sp };
-            item.MouseLeftButtonUp += (_, _) => { _view = new DateTime(d.Year, d.Month, 1); OpenEditor(d); };
+            item.MouseLeftButtonUp += (_, _) => { _view = new DateTime(d.Year, d.Month, 1); OpenEditor(d, t); };
             _items.Children.Add(item);
         }
         if (_items.Children[^1] is Border last) last.BorderThickness = new Thickness(0);
@@ -435,7 +451,7 @@ public sealed class CalendarWidget : Window
         Line(head, "#333333");
         if (_cfg.CalIndonesia && Holidays.Indonesia(d) is { } id) Line(L.F(id.Off ? "印尼红日子（{0}）" : "印尼联合休假（{0}）", L.T(id.Name)), "#D4433D");
         if (_cfg.CalChina && Holidays.China(d) is { } cn) Line(cn.Off ? L.F("中国放假（{0}）", L.T(cn.Name)) : L.T("中国调休上班"), cn.Off ? "#07A548" : "#666666");
-        if (TripStore.Get(d) is { } t) Line("✈ " + t.Text, "#3A7BE0");
+        foreach (var t in TripStore.On(d)) Line("✈ " + t.Display, "#3A7BE0");
         Line(Away((d - Today).Days), "#07A548", bold: true);
 
         double cw = _cells.ActualWidth / 7, ch = _cells.ActualHeight / 6;
@@ -448,19 +464,37 @@ public sealed class CalendarWidget : Window
     void HideTip() => _tip.IsOpen = false;
 
     // ================= 记行程 =================
-    void OpenEditor(DateTime d)
+    void OpenEditor(DateTime d, Trip? trip = null)
     {
         HideTip();
         _editor?.Close();
         _picked = d;
         Render();
-        var ed = new TripEditor(d, _cfg, Today);
+        var ed = new TripEditor(d, trip, _cfg, Today);
         _editor = ed;
         ed.Closed += (_, _) => { if (_editor == ed) { _editor = null; _picked = null; Render(); } };
         // 放在挂件右边（右边放不下就放左边），和点的那一天差不多高
         int i = Math.Clamp((d - FirstCell()).Days, 0, 41);
         var cellTop = _cells.TranslatePoint(new Point(0, (i / 7) * (_cells.ActualHeight / 6)), this).Y;
         ed.ShowBeside(new Rect(Left, Top, ActualWidth, ActualHeight), Top + cellTop - 16, DeskController.WorkAreaOf(this));
+    }
+
+    /// <summary>打开智能识别窗口（data：拖进来 / 粘贴的东西，可以没有）。已经开着就把东西加进去。</summary>
+    void OpenImport(IDataObject? data)
+    {
+        HideTip();
+        _editor?.Close();
+        if (_import == null)
+        {
+            var w = new TripImportWindow(_cfg, () => Today);
+            _import = w;
+            w.Closed += (_, _) => { if (_import == w) _import = null; };
+            w.Added += d => { _view = new DateTime(d.Year, d.Month, 1); _selA = _selB = null; Render(); };
+            w.SettingsRequested += () => AiSettingsRequested?.Invoke();
+            w.ShowBeside(new Rect(Left, Top, ActualWidth, ActualHeight), DeskController.WorkAreaOf(this));
+        }
+        else _import.Activate();
+        if (data != null) _import.Take(data);
     }
 
     // ================= 菜单 / 键盘 =================
@@ -476,6 +510,7 @@ public sealed class CalendarWidget : Window
         }
         Add(L.T("回到今天"), GoToday);
         Add(L.T("＋ 记一笔"), () => OpenEditor(Today));
+        Add("✨ " + L.T("智能识别（截图 / 聊天记录）…"), () => OpenImport(null));
         m.Items.Add(new Separator());
         Check(L.T("显示农历"), _cfg.CalLunar, v => _cfg.CalLunar = v);
         Check(L.T("显示中国节假日"), _cfg.CalChina, v => _cfg.CalChina = v);
@@ -497,6 +532,10 @@ public sealed class CalendarWidget : Window
             case Key.PageUp: Go(-1); e.Handled = true; break;
             case Key.PageDown: Go(1); e.Handled = true; break;
             case Key.Home: GoToday(); e.Handled = true; break;
+            case Key.V when Keyboard.Modifiers == ModifierKeys.Control:
+                try { OpenImport(Clipboard.GetDataObject()); } catch { OpenImport(null); }
+                e.Handled = true;
+                break;
         }
     }
 
@@ -552,11 +591,15 @@ public sealed class CalendarWidget : Window
     internal void TestView(DateTime month) { _view = new DateTime(month.Year, month.Month, 1); Render(); }
     internal void TestSelect(DateTime a, DateTime b) { _selA = a; _selB = b; Render(); }
     internal void TestHover(DateTime d) { _hover = d; Render(); ShowTip(d); }
-    internal TripEditor? TestEdit(DateTime d) { OpenEditor(d); return _editor; }
+    internal TripEditor? TestEdit(DateTime d) { OpenEditor(d, TripStore.On(d).FirstOrDefault()); return _editor; }
+    internal TripImportWindow? TestImport() { OpenImport(null); return _import; }
     internal string TestStatus => new TextRange(_hint.ContentStart, _hint.ContentEnd).Text + (_tip.IsOpen ? " | " + new TextRange(_tipText.ContentStart, _tipText.ContentEnd).Text.Replace("\r\n", " / ") : "");
 }
 
-/// <summary>点一天弹出的小框：写一句行程，可选提前一天在桌面弹便签提醒。点别处就收起（不保存）。</summary>
+/// <summary>
+/// 点一天弹出的小框：这天已有的几条列在上面（点一条改它，✕ 删掉），下面写一句新的 / 改选中的那条，
+/// 可选提前一天在桌面弹便签提醒。点别处就收起（不保存）。
+/// </summary>
 public sealed class TripEditor : Window
 {
     const string Ink = "#222222", Mute = "#999999", Red = "#E0524C", Blue = "#3A7BE0";
@@ -567,9 +610,12 @@ public sealed class TripEditor : Window
     readonly DateTime _day;
     readonly TextBox _text;
     readonly CheckBox _remind;
+    readonly StackPanel _rows = new() { Margin = new Thickness(0, 6, 0, 0) };
+    readonly Button _del;
+    Trip? _trip;
     bool _keepOpen;
 
-    public TripEditor(DateTime day, AppConfig cfg, DateTime today)
+    public TripEditor(DateTime day, Trip? trip, AppConfig cfg, DateTime today)
     {
         _day = day;
         Title = L.T("行程");
@@ -577,7 +623,6 @@ public sealed class TripEditor : Window
         ShowInTaskbar = false; Topmost = true; SizeToContent = SizeToContent.WidthAndHeight;
         FontFamily = Res<FontFamily>("UiFont"); FontSize = 12.5; UseLayoutRounding = true;
 
-        var trip = TripStore.Get(day);
         var sub = new List<string>();
         if (cfg.CalLunar && ChinaCal.InRange(day)) sub.Add((L.IsZh ? "农历" : L.T("农历") + " ") + ChinaCal.Of(day).Full);
         int n = (day - today).Days;
@@ -585,17 +630,16 @@ public sealed class TripEditor : Window
         if (cfg.CalIndonesia && Holidays.Indonesia(day) is { } id) sub.Add(L.F(id.Off ? "印尼红日子（{0}）" : "印尼联合休假（{0}）", L.T(id.Name)));
 
         var placeholder = new TextBlock { Text = L.T("写一句就行，例如：08:30 雅加达 → 广州 CZ386"), Foreground = B("#AAAAAA"), IsHitTestVisible = false, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(9, 7, 9, 0), FontSize = 12 };
-        _text = new TextBox { Style = Res<Style>("WinTextBox"), Height = 50, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, FontSize = 12.5, MaxLength = 120, Text = trip?.Text ?? "" };
+        _text = new TextBox { Style = Res<Style>("WinTextBox"), Height = 50, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, FontSize = 12.5, MaxLength = 120 };
         _text.TextChanged += (_, _) => placeholder.Visibility = _text.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        placeholder.Visibility = _text.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         _text.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Save(); e.Handled = true; } };
         var box = new Grid { Margin = new Thickness(0, 8, 0, 0) };
         box.Children.Add(_text); box.Children.Add(placeholder);
 
-        _remind = new CheckBox { Style = Res<Style>("Toggle"), IsChecked = trip?.Remind ?? true, Margin = new Thickness(0, 8, 0, 0), Content = new TextBlock { Text = L.T("提前一天在桌面弹便签提醒"), FontSize = 12, Foreground = B("#666666"), TextWrapping = TextWrapping.Wrap } };
+        _remind = new CheckBox { Style = Res<Style>("Toggle"), Margin = new Thickness(0, 8, 0, 0), Content = new TextBlock { Text = L.T("提前一天在桌面弹便签提醒"), FontSize = 12, Foreground = B("#666666"), TextWrapping = TextWrapping.Wrap } };
 
-        var del = new Button { Content = L.T("删除"), Style = Res<Style>("BtnW"), Foreground = B(Red), Padding = new Thickness(10, 2, 10, 2), Visibility = trip != null ? Visibility.Visible : Visibility.Hidden };
-        del.Click += (_, _) => { TripStore.Set(_day, "", false); Close(); };
+        _del = new Button { Content = L.T("删除"), Style = Res<Style>("BtnW"), Foreground = B(Red), Padding = new Thickness(10, 2, 10, 2) };
+        _del.Click += (_, _) => { if (_trip != null) TripStore.Remove(_trip); Close(); };
         var cancel = new Button { Content = L.T("取消"), Style = Res<Style>("BtnW"), Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 6, 0) };
         cancel.Click += (_, _) => Close();
         var save = new Button { Content = L.T("保存"), Style = Res<Style>("BtnG"), Padding = new Thickness(12, 2, 12, 2) };
@@ -603,12 +647,13 @@ public sealed class TripEditor : Window
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         right.Children.Add(cancel); right.Children.Add(save);
         var btns = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
-        DockPanel.SetDock(del, Dock.Left);
-        btns.Children.Add(del); btns.Children.Add(right);
+        DockPanel.SetDock(_del, Dock.Left);
+        btns.Children.Add(_del); btns.Children.Add(right);
 
         var sp = new StackPanel { Width = 240 };
         sp.Children.Add(new TextBlock { Text = CalText.Long(day), FontWeight = FontWeights.Bold, FontSize = 13, Foreground = B(Ink) });
         sp.Children.Add(new TextBlock { Text = string.Join(" · ", sub), Foreground = B(Mute), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+        sp.Children.Add(_rows);
         sp.Children.Add(box); sp.Children.Add(_remind); sp.Children.Add(btns);
         Content = new Grid
         {
@@ -623,13 +668,56 @@ public sealed class TripEditor : Window
             },
         };
 
+        Pick(trip);
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
         Deactivated += (_, _) => { if (IsVisible && !_keepOpen) Close(); };
     }
 
+    /// <summary>改哪一条（null = 新记一条）：把它放进输入框，上面的列表高亮它。</summary>
+    void Pick(Trip? t)
+    {
+        _trip = t;
+        _text.Text = t?.Display ?? "";
+        _text.CaretIndex = _text.Text.Length;
+        _remind.IsChecked = t?.Remind ?? true;
+        _del.Visibility = t != null ? Visibility.Visible : Visibility.Hidden;
+        BuildRows();
+        if (IsLoaded) _text.Focus();
+    }
+
+    void BuildRows()
+    {
+        _rows.Children.Clear();
+        var list = TripStore.On(_day);
+        if (list.Count == 0) { _rows.Visibility = Visibility.Collapsed; return; }
+        _rows.Visibility = Visibility.Visible;
+        foreach (var t in list)
+        {
+            bool on = t == _trip;
+            var x = new TextBlock { Text = "✕", Foreground = B("#BBBBBB"), FontSize = 11, Padding = new Thickness(6, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = L.T("删除") };
+            x.MouseEnter += (_, _) => x.Foreground = B(Red);
+            x.MouseLeave += (_, _) => x.Foreground = B("#BBBBBB");
+            x.MouseLeftButtonUp += (_, e) => { e.Handled = true; TripStore.Remove(t); Pick(_trip == t ? null : _trip); };
+            var dp = new DockPanel();
+            DockPanel.SetDock(x, Dock.Right);
+            dp.Children.Add(x);
+            dp.Children.Add(new TextBlock { Text = "✈ " + t.Display, Foreground = B(on ? Blue : "#444444"), FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = t.Display, VerticalAlignment = VerticalAlignment.Center });
+            var row = new Border { Child = dp, Padding = new Thickness(6, 3, 4, 3), CornerRadius = new CornerRadius(4), Cursor = Cursors.Hand, Background = B(on ? "#EAF2FD" : "#00FFFFFF"), Margin = new Thickness(0, 0, 0, 2) };
+            if (!on) { row.MouseEnter += (_, _) => row.Background = B("#F3F5F8"); row.MouseLeave += (_, _) => row.Background = B("#00FFFFFF"); }
+            row.MouseLeftButtonUp += (_, _) => Pick(t);
+            _rows.Children.Add(row);
+        }
+        if (_trip != null)
+        {
+            var add = new TextBlock { Text = L.T("＋ 这天再记一条"), Foreground = B(Blue), FontSize = 12, Cursor = Cursors.Hand, Margin = new Thickness(6, 2, 0, 0) };
+            add.MouseLeftButtonUp += (_, _) => Pick(null);
+            _rows.Children.Add(add);
+        }
+    }
+
     void Save()
     {
-        TripStore.Set(_day, _text.Text, _remind.IsChecked == true);
+        TripStore.Save(_trip, _day, _text.Text, _remind.IsChecked == true);
         Close();
     }
 

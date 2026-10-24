@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 
 namespace DeskHub.Core;
@@ -151,17 +152,45 @@ public static class Holidays
     }
 }
 
-/// <summary>行程：某一天写一句话；可以提前一天在桌面弹一张便签提醒。存在 trips.json。</summary>
+/// <summary>行程：某一天的一件事（一天可以有好几条）；可以提前一天在桌面弹一张便签提醒。存在 trips.json。</summary>
 public sealed class Trip
 {
+    public string Id { get; set; } = "";
     /// <summary>yyyy-MM-dd</summary>
     public string Date { get; set; } = "";
+    /// <summary>HH:mm，没有就空着。</summary>
+    public string Time { get; set; } = "";
     public string Text { get; set; } = "";
     public bool Remind { get; set; } = true;
     /// <summary>提醒便签已经弹过了。</summary>
     public bool Reminded { get; set; }
 
     public DateTime Day => DateTime.ParseExact(Date, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+    /// <summary>显示用：“07:45 雅加达 → 新加坡”。</summary>
+    public string Display => Time.Length > 0 ? Time + " " + Text : Text;
+
+    static readonly Regex LeadTime = new(@"^\s*([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)\b\s*", RegexOptions.Compiled);
+
+    static readonly Regex AnyTime = new(@"(?<!\d)([01]?\d|2[0-3])\s*[:：.]\s*([0-5]\d)(?!\d)", RegexOptions.Compiled);
+
+    /// <summary>“7:45”“07:45 PM”“19.30” → “07:45”“19:45”“19:30”；认不出就空。</summary>
+    public static string NormTime(string s)
+    {
+        var m = AnyTime.Match(s);
+        if (!m.Success) return "";
+        int h = int.Parse(m.Groups[1].Value);
+        if (h < 12 && Regex.IsMatch(s, "pm|下午|晚上", RegexOptions.IgnoreCase)) h += 12;
+        return $"{h:00}:{m.Groups[2].Value}";
+    }
+
+    /// <summary>把“08:30 雅加达 → 广州”拆成时间和事情（开头没写时间就只有事情）。</summary>
+    public static (string Time, string Text) Split(string s)
+    {
+        s = s.Trim();
+        var m = LeadTime.Match(s);
+        if (!m.Success || m.Length == s.Length) return ("", s);
+        return ($"{int.Parse(m.Groups[1].Value):00}:{m.Groups[2].Value}", s[m.Length..].Trim());
+    }
 }
 
 public static class TripStore
@@ -171,33 +200,65 @@ public static class TripStore
     static string FilePath => Path.Combine(AppConfig.DataDir, "trips.json");
 
     public static string Key(DateTime d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
     public static void Load()
     {
         try { Trips = File.Exists(FilePath) ? JsonSerializer.Deserialize<List<Trip>>(File.ReadAllText(FilePath), AppConfig.Json) ?? new() : new(); }
         catch { Trips = new(); }
+        // 老版本一天一条、时间写在文字里：补上 Id，把开头的时间拆出来
+        foreach (var t in Trips)
+        {
+            if (string.IsNullOrEmpty(t.Id)) t.Id = NewId();
+            if (t.Time.Length == 0) (t.Time, t.Text) = Trip.Split(t.Text);
+        }
+        Sort();
     }
+
+    static void Sort() => Trips.Sort((a, b) => { int c = string.CompareOrdinal(a.Date, b.Date); return c != 0 ? c : string.CompareOrdinal(a.Time, b.Time); });
 
     static void Save()
     {
+        Sort();
         try { AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(Trips, AppConfig.Json)); } catch { }
         Changed?.Invoke();
     }
 
-    public static Trip? Get(DateTime d) => Trips.FirstOrDefault(t => t.Date == Key(d));
+    /// <summary>这一天的所有行程（按时间排好）。</summary>
+    public static List<Trip> On(DateTime d) { var k = Key(d); return Trips.Where(t => t.Date == k).ToList(); }
+    public static bool Any(DateTime d) { var k = Key(d); return Trips.Any(t => t.Date == k); }
 
-    /// <summary>写这天的行程；文字为空就是删掉。改了文字或打开提醒，提醒会重新弹（如果还没到日子）。</summary>
-    public static void Set(DateTime d, string text, bool remind)
+    /// <summary>
+    /// 新记一条或改一条（trip 为 null 就是新的）；文字为空就是删掉。文字开头的时间会拆到 Time 里。
+    /// 改了日子 / 时间 / 文字或打开提醒，提醒会重新弹（如果还没到日子）。
+    /// </summary>
+    public static Trip? Save(Trip? trip, DateTime d, string text, bool remind)
     {
-        text = text.Trim();
-        var t = Get(d);
-        if (text.Length == 0) { if (t != null) { Trips.Remove(t); Save(); } return; }
-        if (t == null) Trips.Add(t = new Trip { Date = Key(d) });
-        if (t.Text != text || (remind && !t.Remind)) t.Reminded = false;
-        t.Text = text; t.Remind = remind;
-        Trips.Sort((a, b) => string.CompareOrdinal(a.Date, b.Date));
+        var (time, body) = Trip.Split(text);
+        if (body.Length == 0) { if (trip != null) Remove(trip); return null; }
+        if (trip == null || !Trips.Contains(trip)) Trips.Add(trip = new Trip { Id = NewId() });
+        if (trip.Date != Key(d) || trip.Time != time || trip.Text != body || (remind && !trip.Remind)) trip.Reminded = false;
+        trip.Date = Key(d); trip.Time = time; trip.Text = body; trip.Remind = remind;
         Save();
+        return trip;
     }
+
+    /// <summary>一次加好几条（智能识别出来的）；同一天、同一时间、同样文字的不重复加。返回加了几条。</summary>
+    public static int AddMany(IEnumerable<(DateTime Day, string Time, string Text, bool Remind)> items)
+    {
+        int n = 0;
+        foreach (var (d, time, text, remind) in items)
+        {
+            var body = text.Trim();
+            if (body.Length == 0 || Trips.Any(t => t.Date == Key(d) && t.Time == time && t.Text == body)) continue;
+            Trips.Add(new Trip { Id = NewId(), Date = Key(d), Time = time, Text = body, Remind = remind });
+            n++;
+        }
+        if (n > 0) Save();
+        return n;
+    }
+
+    public static void Remove(Trip t) { if (Trips.Remove(t)) Save(); }
 
     public static IEnumerable<Trip> Upcoming(DateTime today) => Trips.Where(t => string.CompareOrdinal(t.Date, Key(today)) >= 0);
 
@@ -216,7 +277,7 @@ public static class TripStore
             var head = t.Day == today ? L.F("今天 · {0}", CalText.Short(t.Day)) : L.F("明天 · {0}", CalText.Short(t.Day));
             GuideStore.D.Notes.Add(new GuideNote
             {
-                Text = head + "\n" + t.Text, Color = "blue", Arrow = false, Daily = false, Topmost = false,
+                Text = head + "\n" + t.Display, Color = "blue", Arrow = false, Daily = false, Topmost = false,
                 X = workArea.Right - 330 - i * 24, Y = workArea.Top + 120 + i * 24, W = 280,
             });
             t.Reminded = true;

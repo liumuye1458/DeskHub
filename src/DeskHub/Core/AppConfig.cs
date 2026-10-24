@@ -104,6 +104,13 @@ public sealed class AppConfig
     /// <summary>拉大日历时字和标记跟着变大。</summary>
     public bool CalAutoScale { get; set; } = true;
 
+    // 智能识别行程用的 AI 服务（OpenAI 兼容格式）；地址空着 = 只用本机识别
+    /// <summary>例如 http://192.168.1.10:11434/v1、https://api.openai.com/v1。</summary>
+    public string AiUrl { get; set; } = "";
+    public string AiModel { get; set; } = "";
+    /// <summary>密钥，用 Windows 自带加密（DPAPI，只有本机这个账户解得开）存的 base64。</summary>
+    public string AiKey { get; set; } = "";
+
     // 工具条收到屏幕边上
     public bool DockCollapsed { get; set; }
     /// <summary>收在右边（false = 左边）。</summary>
