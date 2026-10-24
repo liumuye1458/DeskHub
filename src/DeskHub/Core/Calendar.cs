@@ -306,6 +306,8 @@ public static class TripStore
         // 0.12.0 的本机识别会把订单页上“酒店 退改签 报销”那排按钮认成一家酒店：清掉
         Trips.RemoveAll(t => t.Kind == Trip.Hotel && Regex.IsMatch(t.Place, "退改|报销|客服|发票"));
         Trips.Sort(Order);
+        // 启动时日历比行程先建好：读完要让它重画，不然一直显示“还没有行程”
+        Changed?.Invoke();
     }
 
     /// <summary>按出行时间排：先日子，再时间（没写时间的排在那天最前面）。</summary>
