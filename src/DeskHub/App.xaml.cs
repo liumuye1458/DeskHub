@@ -451,7 +451,7 @@ public partial class App : Application
                                 case "impshot": await Task.Delay(200); RenderWindow(_calImp!, a2); break;
                                 case "impadd": _calImp!.TestAdd(); _calImp = null; break;
                                 case "ocr": report.Add("ocr → " + (await Core.TripAi.Ocr(System.IO.File.ReadAllBytes(a2))).Replace("\n", " ⏎ ")); break;
-                                case "rules": report.Add("rules → " + string.Join(" / ", Core.TripRules.Parse(a2.Replace("\\n", "\n"), UI.CalendarWidget.TodayOverride ?? DateTime.Today).Select(d => $"{d.Day:yyyy-MM-dd} {d.Time} {d.Text}"))); break;
+                                case "rules": report.Add("rules → " + string.Join(" / ", Core.TripRules.Parse(a2.Replace("\\n", "\n"), UI.CalendarWidget.TodayOverride ?? DateTime.Today).Select(d => $"{d.Day:yyyy-MM-dd} [{d.Kind}] {d.Display} | {d.FromAt} → {d.ToAt} | {d.Carrier}"))); break;
                                 case "ai": // ai 地址|模型|密钥
                                     {
                                         var f = a2.Split('|'); var cfg = _ctl!.Cfg;

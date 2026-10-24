@@ -266,7 +266,7 @@ public sealed class CalendarWidget : Window
         _headDock.LayoutTransform = zoom;
         TextOptions.SetTextFormattingMode(_headDock, zoom == null ? TextFormattingMode.Display : TextFormattingMode.Ideal);
         _tipText.FontSize = 12 * _ks; _tipText.LineHeight = 19 * _ks;
-        _body.ColumnDefinitions[1].Width = new GridLength(mode == ListMode.Right ? ListW * _ks : 0);
+        _body.ColumnDefinitions[1].Width = new GridLength(mode == ListMode.Right ? ListWidth(w, _ks) : 0);
         _body.RowDefinitions[0].Height = mode == ListMode.Below ? new GridLength(calH) : new GridLength(1, GridUnitType.Star);
         _body.RowDefinitions[1].Height = mode == ListMode.Below ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Grid.SetColumn(_listBox, mode == ListMode.Right ? 1 : 0);
@@ -278,13 +278,16 @@ public sealed class CalendarWidget : Window
 
     static double Soft(double k) => 1 + (k - 1) * 0.6;
 
+    /// <summary>右边行程列表的宽：窗口拉宽时多分给列表（约四成），日历格子让一让，一条行程能写全。</summary>
+    static double ListWidth(double w, double ks) => Math.Min(440, Math.Max(ListW * ks, w * 0.38));
+
     /// <summary>放大 k 倍时：格子宽、格子高、月历那块的高度。</summary>
     static (double, double, double) Geo(double w, double h, ListMode mode, double k)
     {
         double ks = Soft(k);
         double bodyH = h - HeadH * ks - 2;
         double calH = mode == ListMode.Below ? Math.Min(bodyH - 110 * ks, 300 * ks) : bodyH;
-        double calW = w - 2 - (mode == ListMode.Right ? ListW * ks : 0) - 12;
+        double calW = w - 2 - (mode == ListMode.Right ? ListWidth(w, ks) : 0) - 12;
         return (calW / 7, (calH - WeekH * ks - 8) / 6, calH);
     }
 
@@ -841,8 +844,11 @@ public sealed class TripEditor : Window
             x.MouseEnter += (_, _) => x.Foreground = B(Red);
             x.MouseLeave += (_, _) => x.Foreground = B("#BBBBBB");
             x.MouseLeftButtonUp += (_, e) => { e.Handled = true; TripStore.Remove(t); Pick(_trip == t ? null : _trip); };
-            var g = new Grid();
-            g.Children.Add(card); g.Children.Add(x);
+            // ✕ 放在卡片外面右边，不压住卡片里的字（比如酒店的“4 晚”）
+            x.Margin = new Thickness(2, 4, -4, 0);
+            var g = new DockPanel();
+            DockPanel.SetDock(x, Dock.Right);
+            g.Children.Add(x); g.Children.Add(card);
             card.MouseLeftButtonUp += (_, _) => Pick(t);
             _rows.Children.Add(g);
         }

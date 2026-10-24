@@ -240,7 +240,7 @@ public static class TripAi
             var dec = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ras);
             // 字小的图（电脑上截的小窗口）放大一倍再识，准不少；太大的缩到识别引擎的上限以内
             uint w = dec.PixelWidth, h = dec.PixelHeight, max = Math.Max(w, h);
-            double k = max < 1200 ? 2 : Math.Min(1, Windows.Media.Ocr.OcrEngine.MaxImageDimension / (double)max);
+            double k = max < 1200 ? Math.Clamp(1800.0 / max, 2, 4) : Math.Min(1, Windows.Media.Ocr.OcrEngine.MaxImageDimension / (double)max);
             var tf = new Windows.Graphics.Imaging.BitmapTransform { ScaledWidth = (uint)(w * k), ScaledHeight = (uint)(h * k), InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant };
             using var bmp = await dec.GetSoftwareBitmapAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied, tf,
                 Windows.Graphics.Imaging.ExifOrientationMode.IgnoreExifOrientation, Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage);
@@ -288,6 +288,10 @@ public static class TripRules
     static readonly Regex Rel = new(@"大后天|后天|明天|今天|今晚|明早|明晚|tomorrow|today|tonight|besok|lusa|hari ini", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     static readonly Regex Week = new(@"(下下|下个?|这个?|本)?(周|星期|礼拜)([一二三四五六日天])", RegexOptions.Compiled);
     static readonly Regex TimeRx = new(@"(?<!\d)([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)(?!\d)", RegexOptions.Compiled);
+    /// <summary>口语的钟点：3点、3点半、3点15分、15点。</summary>
+    static readonly Regex CnTimeRx = new(@"(?<!\d)([01]?\d|2[0-3])\s*点\s*(半|一刻|三刻|([0-5]?\d)\s*分?)?", RegexOptions.Compiled);
+    static readonly Regex NightsRx = new(@"(\d{1,2})\s*(晚|nights?|malam)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex RoomRx = new(@"[\p{IsCJKUnifiedIdeographs}]{0,6}(大床房|双床房|标准间|标间|套房|单人间|双人间|家庭房)|\b(Deluxe|Superior|Standard|Premier|Executive)[\w ]{0,20}?(Room|Suite|King|Twin)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     static readonly Regex Junk = new(@"(周|星期|礼拜)[一二三四五六日天]|上午|中午|下午|傍晚|晚上|早上|\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)(day)?\b\.?,?|(Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu),?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     /// <summary>下单、付款这类时间不是出行时间：这些行里的日期不算。</summary>
     static readonly Regex OrderLine = new(@"下单|预订时间|预定时间|订单时间|创建时间|支付|付款|出票时间|booked|booking date|ordered|paid|dipesan|dibayar", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -309,7 +313,13 @@ public static class TripRules
         "CGK", "HLP", "SIN", "CAN", "SZX", "PVG", "SHA", "PEK", "PKX", "HKG", "MFM", "TPE", "KUL", "BKK", "DMK", "HKT", "DPS", "SUB", "KNO", "BDO", "JOG", "YIA", "SRG", "UPG", "BTH",
         "HGH", "CTU", "TFU", "CKG", "XIY", "XMN", "FOC", "KMG", "NNG", "HAK", "SYX", "WUH", "CSX", "NKG", "TAO", "TSN", "NRT", "HND", "KIX", "ICN", "SGN", "HAN", "MNL", "DXB", "LHR", "CDG", "SYD", "MEL",
     };
-    static readonly Regex CityRx = new(string.Join("|", Cities.OrderByDescending(c => c.Length).Select(c => c.All(char.IsUpper) ? $@"\b{c}\b" : Regex.Escape(c))), RegexOptions.Compiled);
+    static readonly string CityAlt = string.Join("|", Cities.OrderByDescending(c => c.Length).Select(c => c.All(char.IsUpper) ? $@"\b{c}\b" : Regex.Escape(c)));
+    static readonly Regex CityRx = new(CityAlt, RegexOptions.Compiled);
+    /// <summary>“深圳 – 雅加达”这种一行的航线标题（飞猪、携程把它放在日期上面一行；识字常把“–”认成“一”）。</summary>
+    static readonly Regex RouteRx = new(@"(" + CityAlt + @")\s*(?:[-–—一→~～>＞]+|至|到|to)\s*(" + CityAlt + @")", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    /// <summary>机场 + 航站楼：宝安国际机场 T3、樟宜机场 T2、Soekarno-Hatta Airport T3。</summary>
+    static readonly Regex AirportRx = new(@"([\p{IsCJKUnifiedIdeographs}\-一]{2,12}机场|[A-Z][\w\-]+(?: [A-Z][\w\-]+)* (?:International )?Airport)\s*(T\s?\d)?", RegexOptions.Compiled);
+    static bool IsRouteLine(string line) => RouteRx.IsMatch(line) && !Full.IsMatch(line) && !Cn.IsMatch(line);
 
     public static List<Trip> Parse(string text, DateTime today)
     {
@@ -357,6 +367,12 @@ public static class TripRules
             var h = hits[i];
             int lineStart = text.LastIndexOf('\n', Math.Max(0, h.Start - 1)) + 1;
             int from = Math.Max(lineStart, i > 0 ? hits[i - 1].End : 0);
+            // 日期上面一行是航线标题（“深圳 – 雅加达”）：归这一条
+            if (from == lineStart && lineStart > 0)
+            {
+                int prevStart = text.LastIndexOf('\n', Math.Max(0, lineStart - 2)) + 1;
+                if ((i == 0 || prevStart >= hits[i - 1].End) && IsRouteLine(text[prevStart..(lineStart - 1)])) from = prevStart;
+            }
             int to = text.Length;
             if (i + 1 < hits.Count)
             {
@@ -364,6 +380,12 @@ public static class TripRules
                 var next = hits[i + 1].Start;
                 int nextLine = text.LastIndexOf('\n', Math.Max(0, next - 1)) + 1;
                 to = nextLine > h.End ? nextLine : next;
+                // 下一个日期上面的航线标题归下一条
+                if (to == nextLine && nextLine > h.End)
+                {
+                    int prevStart = text.LastIndexOf('\n', Math.Max(0, nextLine - 2)) + 1;
+                    if (prevStart > h.End && IsRouteLine(text[prevStart..(nextLine - 1)])) to = prevStart;
+                }
             }
             to = Math.Min(to, h.End + 220);
             var seg = text[from..h.Start] + " " + text[h.End..to];
@@ -377,16 +399,22 @@ public static class TripRules
 
     static List<string> Times(string seg)
     {
-        var r = new List<string>();
-        foreach (Match tm in TimeRx.Matches(seg))
+        var r = new List<(int At, string T)>();
+        string Pm(Match tm, int hh, string mm)
         {
-            int hh = int.Parse(tm.Groups[1].Value);
-            // “下午 3:00”“晚上 8:00”“3:00 pm”
+            // “下午 3:00”“晚上 8 点”“3:00 pm”
             var around = seg[Math.Max(0, tm.Index - 4)..Math.Min(seg.Length, tm.Index + tm.Length + 4)];
             if (hh < 12 && Regex.IsMatch(around, "下午|晚上|傍晚|pm|sore|malam", RegexOptions.IgnoreCase)) hh += 12;
-            r.Add($"{hh:00}:{tm.Groups[2].Value}");
+            return $"{hh:00}:{mm}";
         }
-        return r;
+        foreach (Match tm in TimeRx.Matches(seg)) r.Add((tm.Index, Pm(tm, int.Parse(tm.Groups[1].Value), tm.Groups[2].Value)));
+        foreach (Match tm in CnTimeRx.Matches(seg))
+        {
+            var g = tm.Groups[2].Value;
+            int mm = g == "半" ? 30 : g == "一刻" ? 15 : g == "三刻" ? 45 : tm.Groups[3].Success ? int.Parse(tm.Groups[3].Value) : 0;
+            if (mm < 60) r.Add((tm.Index, Pm(tm, int.Parse(tm.Groups[1].Value), $"{mm:00}")));
+        }
+        return r.OrderBy(x => x.At).Select(x => x.T).ToList();
     }
 
     /// <summary>一段文字 → 一条行程（认不出像样内容就 null）。</summary>
@@ -398,13 +426,25 @@ public static class TripRules
         // 城市：去掉“新加坡航空”这种航空公司名再找
         var forCity = carrier.Success ? seg.Replace(carrier.Value, " ") : seg;
         var cities = CityRx.Matches(forCity).Select(m => m.Value).Distinct().ToList();
+        var route = RouteRx.Match(forCity);
+        if (route.Success) cities = new() { route.Groups[1].Value, route.Groups[2].Value };
+        var airports = AirportRx.Matches(seg).Select(m =>
+        {
+            // “雅加达苏加诺-哈达机场”前面的城市名去掉；“一”多半是识字把“-”认错了
+            var a = CityRx.Replace(m.Groups[1].Value, "", 1, 0).Replace('一', '-').Trim('-', ' ');
+            return a.Length < 2 ? "" : (a + (m.Groups[2].Success ? " " + m.Groups[2].Value.Replace(" ", "") : "")).Trim();
+        }).Where(a => a.Length > 0).Distinct().ToList();
 
         var fno = FlightNo.Matches(seg).FirstOrDefault(m => !Regex.IsMatch(m.Value, @"^([Tt]\d|[Aa]3\d|[Bb]7\d)") && Regex.IsMatch(m.Groups[1].Value, "[A-Za-z]"));
         var tno = Regex.IsMatch(seg, "站|高铁|动车|火车|train|kereta", RegexOptions.IgnoreCase) ? TrainNo.Match(seg) : Match.Empty;
-        if (tno.Success || (fno != null && (cities.Count > 0 || times.Count >= 2 || Regex.IsMatch(seg, "航班|机场|起飞|flight|airport|penerbangan", RegexOptions.IgnoreCase))))
+        bool flightWords = Regex.IsMatch(seg, "航班|机场|起飞|航空|flight|airport|airlines|airways|penerbangan", RegexOptions.IgnoreCase);
+        // 有航班号；或者航班号没识出来，但有“深圳 – 雅加达”这样的航线 + 机场 / 航空公司 / 起降两个时间
+        if (tno.Success || (fno != null && (cities.Count > 0 || times.Count >= 2 || flightWords)) || (route.Success && (flightWords || times.Count >= 2)))
         {
             t.Kind = tno.Success ? Trip.Train : Trip.Flight;
-            t.No = tno.Success ? tno.Value : fno!.Value;
+            t.No = tno.Success ? tno.Value : fno?.Value ?? "";
+            if (!tno.Success && airports.Count > 0) t.FromAt = airports[0];
+            if (!tno.Success && airports.Count > 1) t.ToAt = airports[1];
             if (times.Count >= 2) t.EndTime = times[1];
             if (cities.Count > 0) t.From = cities[0];
             if (cities.Count > 1) t.To = cities[1];
@@ -413,16 +453,24 @@ public static class TripRules
             return t;
         }
         var hotel = HotelRx.Match(seg);
-        if (hotel.Success && Regex.IsMatch(seg, "入住|酒店|hotel|check.?in|menginap", RegexOptions.IgnoreCase))
+        // 要有“入住 / 退房 / 几晚”这类字才算酒店；订单页上一排“酒店 退改签 报销”按钮不算
+        if (hotel.Success && Regex.IsMatch(seg, @"入住|离店|退房|\d\s*晚|间夜|房型|check.?in|check.?out|\d\s*nights?|menginap", RegexOptions.IgnoreCase)
+            && !Regex.IsMatch(hotel.Value, "退改|报销|客服|发票"))
         {
             t.Kind = Trip.Hotel;
-            t.Place = Regex.Replace(hotel.Value, @"^(入住|预订|订)\s*", "").Trim();
+            var place = Regex.Replace(hotel.Value.Trim(), @"^((入住|预订|预定|订)\s*)+", "").Trim();
+            // 中文店名到“酒店 / 宾馆……”为止，后面的“2晚 豪华大床房”不算店名
+            var cut = Regex.Match(place, "酒店|宾馆|饭店|民宿|公寓");
+            if (cut.Success && Regex.IsMatch(place[..cut.Index], @"\p{IsCJKUnifiedIdeographs}")) place = place[..(cut.Index + cut.Length)];
+            t.Place = place;
+            if (NightsRx.Match(seg) is { Success: true } n && int.Parse(n.Groups[1].Value) is > 0 and < 60 and var nights) t.EndDate = TripStore.Key(day.AddDays(nights));
+            if (RoomRx.Match(seg) is { Success: true } room) t.Text = room.Value.Trim();
             t.Tidy();
             return t;
         }
 
         // 普通日程：去掉时间、星期、零碎符号，剩下的当这件事
-        var s = TimeRx.Replace(seg, " ");
+        var s = CnTimeRx.Replace(TimeRx.Replace(seg, " "), " ");
         s = Junk.Replace(s, " ");
         s = Regex.Replace(s, @"(?<![\p{L}])[\d\s·•.,，、:：()（）\[\]【】/|\-—~～]+(?![\p{L}])", " ");
         s = Regex.Replace(s, @"\s+", " ").Trim(' ', ',', '，', '、', '-', '—', '~', '～', '：', ':', '|', '/', '.', '。');

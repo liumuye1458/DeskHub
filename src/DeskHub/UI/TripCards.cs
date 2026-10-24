@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -35,122 +36,83 @@ public static class TripCard
         TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
     };
 
-    /// <summary>卡片内容（不带外框）。dark：日历上的半透明深色；否则白底窗口里用。</summary>
+    /// <summary>
+    /// 卡片内容（不带外框）。dark：日历上的半透明深色；否则白底窗口里用。
+    /// 排法照着飞猪订单：第一行大字写“从哪到哪 / 住哪 / 干什么”，下面一行写时间和航班号，再下面写机场、备注。
+    /// </summary>
     public static FrameworkElement Body(Trip t, bool dark, bool showDate = false)
     {
         var th = dark ? Dark : Light;
         var accent = ColorOf(t, dark);
         var sp = new StackPanel();
-        if (showDate)
-            sp.Children.Add(T(CalText.Short(t.Day), 11, th.Sub));
-
-        if (t.IsTransport)
+        TextBlock Line(double size, string color, double top = 2) => new()
         {
-            // 第一行：✈ SQ951 · 新加坡航空
-            var top = string.Join(" · ", new[] { t.No, t.Carrier }.Where(s => s.Length > 0));
-            var head = new TextBlock { FontSize = 10.5, Foreground = B(th.Sub), TextTrimming = TextTrimming.CharacterEllipsis };
-            head.Inlines.Add(new System.Windows.Documents.Run(t.Icon + " ") { Foreground = B(accent) });
-            head.Inlines.Add(new System.Windows.Documents.Run(top.Length > 0 ? top : (t.Kind == Trip.Flight ? L.T("航班") : L.T("火车"))));
-            sp.Children.Add(head);
-
-            // 第二行：07:45 ——— 10:35+1
-            var g = new Grid { Margin = new Thickness(0, 2, 0, 0) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            g.ColumnDefinitions.Add(new ColumnDefinition());
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition());
-            g.RowDefinitions.Add(new RowDefinition());
-            g.RowDefinitions.Add(new RowDefinition());
-            void Put(UIElement e, int r, int c) { Grid.SetRow(e, r); Grid.SetColumn(e, c); g.Children.Add(e); }
-            Put(T(t.Time.Length > 0 ? t.Time : "--:--", 16, th.Ink, true), 0, 0);
-            var arr = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = B(th.Ink), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            arr.Inlines.Add(new System.Windows.Documents.Run(t.EndTime.Length > 0 ? t.EndTime : "--:--"));
-            if (t.PlusDays.Length > 0) arr.Inlines.Add(new System.Windows.Documents.Run(t.PlusDays) { FontSize = 10, BaselineAlignment = BaselineAlignment.Superscript, Foreground = B(accent) });
-            Put(arr, 0, 2);
-            // 中间：一条线，线上一个小图标
-            var mid = new Grid { Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            mid.Children.Add(new Rectangle { Height = 1, Fill = B(th.Line), VerticalAlignment = VerticalAlignment.Center });
-            mid.Children.Add(new Ellipse { Width = 4, Height = 4, Fill = B(th.Line), HorizontalAlignment = HorizontalAlignment.Left });
-            mid.Children.Add(new Ellipse { Width = 4, Height = 4, Fill = B(accent), HorizontalAlignment = HorizontalAlignment.Right });
-            Put(mid, 0, 1);
-            // 第三行：城市（左右各占一半，名字长就省略，不会叠在一起）
-            var toCity = T(t.To.Length > 0 ? t.To : "?", 12, th.Ink); toCity.HorizontalAlignment = HorizontalAlignment.Right;
-            var cities = new UniformGrid2(T(t.From.Length > 0 ? t.From : "?", 12, th.Ink), toCity);
-            Grid.SetColumnSpan(cities, 3);
-            Put(cities, 1, 0);
-            // 第四行：机场 / 航站楼（有才写）
-            if (t.FromAt.Length > 0 || t.ToAt.Length > 0)
-            {
-                var fa = T(t.FromAt, 10, th.Sub); var ta = T(t.ToAt, 10, th.Sub); ta.HorizontalAlignment = HorizontalAlignment.Right; ta.TextAlignment = TextAlignment.Right;
-                // 两边各占一半，太长就省略
-                var two = new UniformGrid2(fa, ta);
-                Grid.SetColumnSpan(two, 3);
-                Put(two, 2, 0);
-            }
-            sp.Children.Add(g);
-            if (t.Text.Length > 0) sp.Children.Add(T(t.Text, 10.5, th.Sub));
+            FontSize = size, Foreground = B(color), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, top, 0, 0),
+        };
+        Run R(string s, string? color = null, bool bold = false)
+        {
+            var r = new Run(s);
+            if (color != null) r.Foreground = B(color); // 不给颜色就跟着这一行的颜色
+            if (bold) r.FontWeight = FontWeights.SemiBold;
+            return r;
         }
-        else if (t.Kind == Trip.Hotel)
+        string day = showDate ? CalText.Short(t.Day) + "  " : "";
+
+        // 第一行：标题（大字）；酒店右边写几晚
+        var head = new DockPanel();
+        if (t.Kind == Trip.Hotel && t.Nights > 0)
         {
-            // 第一行：🏨 酒店名 ……… 4 晚
-            var headRow = new DockPanel();
-            if (t.Nights > 0)
-            {
-                var nights = T(L.F("{0} 晚", t.Nights), 10.5, accent, true); nights.Margin = new Thickness(6, 0, 0, 0);
-                DockPanel.SetDock(nights, Dock.Right); headRow.Children.Add(nights);
-            }
-            var head = new TextBlock { FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = B(th.Ink), TextTrimming = TextTrimming.CharacterEllipsis };
-            head.Inlines.Add(new System.Windows.Documents.Run(t.Icon + " ") { Foreground = B(accent) });
-            head.Inlines.Add(new System.Windows.Documents.Run(t.Title.Length > 0 ? t.Title : L.T("酒店")));
-            headRow.Children.Add(head);
-            sp.Children.Add(headRow);
-            if (t.Nights > 0)
-            {
-                // 和机票一个样子：11月6日 ──── 11月10日，下面写星期和入住 / 退房
-                var g = new Grid { Margin = new Thickness(0, 3, 0, 0) };
-                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                g.ColumnDefinitions.Add(new ColumnDefinition());
-                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                g.RowDefinitions.Add(new RowDefinition());
-                g.RowDefinitions.Add(new RowDefinition());
-                void Put(UIElement e, int r, int c) { Grid.SetRow(e, r); Grid.SetColumn(e, c); g.Children.Add(e); }
-                Put(T(CalText.MonthDay(t.Day), 14, th.Ink, true), 0, 0);
-                var outDay = T(CalText.MonthDay(t.LastDay), 14, th.Ink, true); outDay.HorizontalAlignment = HorizontalAlignment.Right;
-                Put(outDay, 0, 2);
-                var mid = new Grid { Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-                mid.Children.Add(new Rectangle { Height = 1, Fill = B(th.Line), VerticalAlignment = VerticalAlignment.Center });
-                mid.Children.Add(new Ellipse { Width = 4, Height = 4, Fill = B(th.Line), HorizontalAlignment = HorizontalAlignment.Left });
-                mid.Children.Add(new Ellipse { Width = 4, Height = 4, Fill = B(accent), HorizontalAlignment = HorizontalAlignment.Right });
-                Put(mid, 0, 1);
-                var outSub = T(CalText.Weekday(t.LastDay) + " " + L.T("退房") + (t.EndTime.Length > 0 ? " " + t.EndTime : ""), 10, th.Sub); outSub.HorizontalAlignment = HorizontalAlignment.Right;
-                var subs = new UniformGrid2(T(CalText.Weekday(t.Day) + " " + L.T("入住") + (t.Time.Length > 0 ? " " + t.Time : ""), 10, th.Sub), outSub);
-                Grid.SetColumnSpan(subs, 3);
-                Put(subs, 1, 0);
-                sp.Children.Add(g);
-            }
-            else
-            {
-                var sub = T(L.T("入住") + " " + CalText.Short(t.Day) + (t.Time.Length > 0 ? " " + t.Time : ""), 10.5, th.Sub);
-                sub.Margin = new Thickness(0, 2, 0, 0);
-                sp.Children.Add(sub);
-            }
-            if (t.Text.Length > 0) sp.Children.Add(T(t.Text, 10.5, th.Sub));
+            var n = T(L.F("{0} 晚", t.Nights), 11.5, accent, true); n.Margin = new Thickness(8, 0, 0, 0); n.VerticalAlignment = VerticalAlignment.Top;
+            DockPanel.SetDock(n, Dock.Right); head.Children.Add(n);
+        }
+        var title = Line(14, th.Ink, 0);
+        title.FontWeight = FontWeights.SemiBold;
+        if (t.Kind.Length > 0)
+        {
+            title.Inlines.Add(R(t.Icon + " ", accent));
+            title.Inlines.Add(R(t.Title.Length > 0 ? t.Title : t.Kind == Trip.Flight ? L.T("航班") : t.Kind == Trip.Train ? L.T("火车") : L.T("酒店")));
         }
         else
         {
-            var dp = new DockPanel();
-            if (t.Time.Length > 0)
-            {
-                var tm = T(t.Time + (t.EndTime.Length > 0 ? "–" + t.EndTime : ""), 12, accent, true);
-                tm.Margin = new Thickness(0, 0, 8, 0); tm.VerticalAlignment = VerticalAlignment.Top;
-                DockPanel.SetDock(tm, Dock.Left);
-                dp.Children.Add(tm);
-            }
-            var tx = T(t.Text, 12.5, th.Ink); tx.TextWrapping = TextWrapping.Wrap; tx.TextTrimming = TextTrimming.CharacterEllipsis; tx.MaxHeight = 56; // 最多三行
-            dp.Children.Add(tx);
-            sp.Children.Add(dp);
-            if (t.Place.Length > 0) sp.Children.Add(T("@ " + t.Place, 10.5, th.Sub));
+            // 日程：时间用颜色标出来，事情长就折行（最多三行）
+            if (t.Time.Length > 0) title.Inlines.Add(R(t.Time + (t.EndTime.Length > 0 ? "–" + t.EndTime : "") + "  ", accent));
+            title.Inlines.Add(R(t.Text));
+            title.TextWrapping = TextWrapping.Wrap; title.MaxHeight = 62;
         }
+        head.Children.Add(title);
+        sp.Children.Add(head);
+
+        if (t.IsTransport)
+        {
+            // 第二行：13:55 – 18:20⁺¹ · 9C7341 春秋航空
+            var meta = Line(11.5, th.Sub, 3);
+            if (day.Length > 0) meta.Inlines.Add(R(day));
+            if (t.Time.Length > 0 || t.EndTime.Length > 0)
+            {
+                meta.Inlines.Add(R((t.Time.Length > 0 ? t.Time : "?") + (t.EndTime.Length > 0 ? " – " + t.EndTime : ""), th.Ink, true));
+                if (t.PlusDays.Length > 0) meta.Inlines.Add(new Run(t.PlusDays) { FontSize = 9, BaselineAlignment = BaselineAlignment.Superscript, Foreground = B(accent) });
+            }
+            var who = string.Join(" ", new[] { t.No, t.Carrier }.Where(s => s.Length > 0));
+            if (who.Length > 0) meta.Inlines.Add(R((meta.Inlines.Count > 0 ? "  ·  " : "") + who));
+            if (meta.Inlines.Count > 0) sp.Children.Add(meta);
+            // 第三行：宝安国际机场 T3 → 苏加诺-哈达 T3
+            if (t.FromAt.Length > 0 || t.ToAt.Length > 0)
+                sp.Children.Add(T((t.FromAt.Length > 0 ? t.FromAt + " " : "") + "→" + (t.ToAt.Length > 0 ? " " + t.ToAt : ""), 11, th.Sub).Also(x => x.Margin = new Thickness(0, 2, 0, 0)));
+        }
+        else if (t.Kind == Trip.Hotel)
+        {
+            // 第二行：11月6日 周五 15:00 入住 → 11月10日 周二 退房
+            // 放不下时“→ 退房”整段挪到下一行，不会在“周二”中间断开
+            var meta = new WrapPanel { Margin = new Thickness(0, 3, 0, 0) };
+            meta.Children.Add(T(CalText.Short(t.Day) + (t.Time.Length > 0 ? " " + t.Time : "") + " " + L.T("入住"), 11.5, th.Ink));
+            if (t.Nights > 0) meta.Children.Add(T("  →  " + CalText.Short(t.LastDay) + (t.EndTime.Length > 0 ? " " + t.EndTime : "") + " " + L.T("退房"), 11.5, th.Ink));
+            sp.Children.Add(meta);
+        }
+        else if (day.Length > 0 || t.Place.Length > 0)
+        {
+            sp.Children.Add(T(day + (t.Place.Length > 0 ? "@ " + t.Place : ""), 11.5, th.Sub).Also(x => x.Margin = new Thickness(0, 3, 0, 0)));
+        }
+        if (t.Kind.Length > 0 && t.Text.Length > 0) sp.Children.Add(T(t.Text, 11, th.Sub).Also(x => x.Margin = new Thickness(0, 2, 0, 0)));
         return sp;
     }
 
@@ -158,7 +120,7 @@ public static class TripCard
     public static Border Card(Trip t, bool dark, bool showDate = false)
     {
         var accent = ColorOf(t, dark);
-        var inner = new Border { Padding = new Thickness(8, 6, 8, 7), Child = Body(t, dark, showDate) };
+        var inner = new Border { Padding = new Thickness(10, 7, 10, 8), Child = Body(t, dark, showDate) };
         var bar = new Border { Width = 3, Background = B(accent), CornerRadius = new CornerRadius(1.5), Margin = new Thickness(0, 4, 0, 4) };
         var dp = new DockPanel();
         DockPanel.SetDock(bar, Dock.Left);
@@ -170,16 +132,7 @@ public static class TripCard
         };
     }
 
-    /// <summary>两段文字左右各占一半（机场名太长时各自省略，不会挤到一起）。</summary>
-    sealed class UniformGrid2 : Grid
-    {
-        public UniformGrid2(UIElement a, UIElement b)
-        {
-            ColumnDefinitions.Add(new ColumnDefinition()); ColumnDefinitions.Add(new ColumnDefinition());
-            SetColumn(a, 0); SetColumn(b, 1);
-            Children.Add(a); Children.Add(b);
-        }
-    }
+    static TextBlock Also(this TextBlock x, Action<TextBlock> set) { set(x); return x; }
 }
 
 /// <summary>

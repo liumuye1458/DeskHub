@@ -303,6 +303,8 @@ public static class TripStore
             if (string.IsNullOrEmpty(t.Id)) t.Id = NewId();
             if (t.Kind.Length == 0 && t.Time.Length == 0) (t.Time, t.Text) = Trip.Split(t.Text);
         }
+        // 0.12.0 的本机识别会把订单页上“酒店 退改签 报销”那排按钮认成一家酒店：清掉
+        Trips.RemoveAll(t => t.Kind == Trip.Hotel && Regex.IsMatch(t.Place, "退改|报销|客服|发票"));
         Trips.Sort(Order);
     }
 
