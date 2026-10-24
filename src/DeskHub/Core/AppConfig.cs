@@ -110,6 +110,11 @@ public sealed class AppConfig
     public string AiModel { get; set; } = "";
     /// <summary>密钥，用 Windows 自带加密（DPAPI，只有本机这个账户解得开）存的 base64。</summary>
     public string AiKey { get; set; } = "";
+    /// <summary>本机 Claude 小服务（只听 127.0.0.1，转给本机 claude -p）。默认关。</summary>
+    public bool LocalClaude { get; set; }
+    public int LocalClaudePort { get; set; } = Core.LocalClaude.DefaultPort;
+    /// <summary>别的程序来问时要带的口令（用户自己填），DPAPI 加密存。</summary>
+    public string LocalClaudeToken { get; set; } = "";
 
     // 工具条收到屏幕边上
     public bool DockCollapsed { get; set; }

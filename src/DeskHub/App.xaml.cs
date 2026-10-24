@@ -533,6 +533,24 @@ public partial class App : Application
                             }
                         }
                         break;
+                    case "lc": // 本机 Claude 小服务：lc on 端口|口令 / off / status / shot 文件（设置页滚到底截图）
+                        switch (parts[1])
+                        {
+                            case "on":
+                                var lf = line.Substring("lc on ".Length).Split('|');
+                                _ctl!.Cfg.LocalClaude = true; _ctl.Cfg.LocalClaudePort = int.Parse(lf[0]); _ctl.Cfg.LocalClaudeToken = Core.Secret.Protect(lf.Length > 1 ? lf[1] : "");
+                                _tools!.ApplyLocalClaude();
+                                report.Add($"lc on → {(_tools.LocalClaude != null ? "running 127.0.0.1:" + _tools.LocalClaude.Port : "FAILED " + _tools.LocalClaudeError)}");
+                                break;
+                            case "off": _ctl!.Cfg.LocalClaude = false; _tools!.ApplyLocalClaude(); report.Add("lc off"); break;
+                            case "status": report.Add($"lc status → {(_tools!.LocalClaude != null ? "running " + _tools.LocalClaude.Port : "stopped " + _tools.LocalClaudeError)} claude={Core.LocalClaude.FindClaude() ?? "NOT FOUND"}"); break;
+                            case "shot":
+                                OpenSettings("ai"); await Task.Delay(500);
+                                ((System.Windows.Controls.ScrollViewer)_settings!.FindName("PageAi")).ScrollToEnd(); await Task.Delay(300);
+                                RenderWindow(_settings, parts[2]); _settings.Close();
+                                break;
+                        }
+                        break;
                     case "vaultapi": // vaultapi on|off / answer once|always|deny / shot 文件
                         var va = parts[1];
                         if (va is "on" or "off") { _ctl!.Cfg.VaultApi = va == "on"; _tools!.ApplyVaultApi(); }

@@ -40,6 +40,7 @@
     <EmbeddedResource Include="Lang\*.json" Exclude="Lang\_keys.json" />
     <!-- 给要接入密码箱接口的程序看的说明，跟程序放在一起 -->
     <None Include="密码箱接口说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="本机Claude服务说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- 内存紧时主动整理大对象堆（索引的大数组在里面） -->
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
   </ItemGroup>

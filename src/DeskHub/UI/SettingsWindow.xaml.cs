@@ -155,6 +155,41 @@ public partial class SettingsWindow : Window
             finally { AiTest.IsEnabled = true; }
         };
         Closed += (_, _) => _aiCts?.Cancel();
+
+        // 本机 Claude 小服务
+        LcOn.IsChecked = cfg.LocalClaude;
+        LcPort.Text = cfg.LocalClaudePort.ToString();
+        LcToken.Password = Secret.Unprotect(cfg.LocalClaudeToken);
+        ShowLocalClaude();
+        LcUse.Click += (_, _) =>
+        {
+            if (LcToken.Password.Trim().Length == 0) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("先填口令"); LcToken.Focus(); return; }
+            if (!int.TryParse(LcPort.Text.Trim(), out var port) || port < 1024 || port > 65535) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("端口填 1024 到 65535 之间的数"); return; }
+            LcOn.IsChecked = true;
+            AiUrl.Text = $"http://127.0.0.1:{port}/v1/messages";
+            AiModel.ItemsSource = LocalClaude.Models;
+            AiModel.Text = LocalClaude.Models[0];
+            AiKey.Password = LcToken.Password.Trim();
+            LcHint.Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48));
+            LcHint.Text = L.T("已填到上面的地址、密钥、模型，点“保存”生效。");
+        };
+        LcDoc.Click += (_, _) =>
+        {
+            if (File.Exists(LocalClaude.DocPath)) Process.Start(new ProcessStartInfo(LocalClaude.DocPath) { UseShellExecute = true });
+            else { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("说明文件不见了") + "：" + LocalClaude.DocPath; }
+        };
+    }
+
+    void ShowLocalClaude()
+    {
+        var running = _c.Tools?.LocalClaude;
+        var err = _c.Tools?.LocalClaudeError ?? "";
+        var exe = LocalClaude.FindClaude();
+        LcHint.Foreground = Brushes.Gray;
+        if (exe == null) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。"); }
+        else if (running != null) { LcHint.Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48)); LcHint.Text = L.F("正在运行：http://127.0.0.1:{0}", running.Port); }
+        else if (err.Length > 0) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = err; }
+        else LcHint.Text = L.T("没打开。");
     }
 
     void UpdateExample() =>
@@ -243,6 +278,9 @@ public partial class SettingsWindow : Window
         if (root.Length < 3 || !Path.IsPathRooted(root)) { SaveHint.Text = L.T("归档位置要写完整路径，例如 D:\\桌面归档"); NavFlow.IsChecked = true; return false; }
         if (AiUrl.Text.Trim().Length > 0 && !Uri.TryCreate(AiUrl.Text.Trim(), UriKind.Absolute, out _)) { SaveHint.Text = L.T("AI 服务地址要以 http:// 或 https:// 开头"); NavAi.IsChecked = true; return false; }
         if (AiUrl.Text.Trim().Length > 0 && AiModel.Text.Trim().Length == 0) { SaveHint.Text = L.T("填了 AI 服务地址，还要填模型名（点“测试连接”可以读出来）"); NavAi.IsChecked = true; return false; }
+        if (!int.TryParse(LcPort.Text.Trim(), out var lcPort) || lcPort < 1024 || lcPort > 65535) { SaveHint.Text = L.T("端口填 1024 到 65535 之间的数"); NavAi.IsChecked = true; return false; }
+        if (LcOn.IsChecked == true && LcToken.Password.Trim().Length == 0) { SaveHint.Text = L.T("打开本机 Claude 服务要先填口令"); NavAi.IsChecked = true; LcToken.Focus(); return false; }
+        bool lcChanged = false;
         var names = _rows.Select(r => r.Name.Text.Trim()).ToList();
         if (names.Any(n => n.Length == 0) || names.Distinct().Count() != names.Count || names.Contains(AppConfig.OtherTopic))
         { SaveHint.Text = L.T("事项名称不能为空、不能重复，也不能叫“其他”"); NavRules.IsChecked = true; return false; }
@@ -267,6 +305,15 @@ public partial class SettingsWindow : Window
         cfg.AiUrl = AiUrl.Text.Trim();
         cfg.AiModel = AiModel.Text.Trim();
         cfg.AiKey = Secret.Protect(AiKey.Password.Trim());
+        bool lcOn = LcOn.IsChecked == true;
+        var lcToken = LcToken.Password.Trim();
+        if (lcOn != cfg.LocalClaude || lcPort != cfg.LocalClaudePort || lcToken != Secret.Unprotect(cfg.LocalClaudeToken))
+        {
+            cfg.LocalClaude = lcOn;
+            cfg.LocalClaudePort = lcPort;
+            cfg.LocalClaudeToken = Secret.Protect(lcToken);
+            lcChanged = true;
+        }
         cfg.ClockNote = string.Join(" ", ClockNote.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
         var newLang = (string)((ComboBoxItem)LangBox.SelectedItem).Tag;
         bool langChanged = newLang != cfg.Language;
@@ -278,6 +325,11 @@ public partial class SettingsWindow : Window
         _c.ApplyTexts();
         _c.Refresh();
         _c.SetCalendarShown(CalShow.IsChecked == true);
+        if (lcChanged)
+        {
+            _c.Tools?.ApplyLocalClaude();
+            if (_c.Tools?.LocalClaudeError is { Length: > 0 } lcErr) { ShowLocalClaude(); SaveHint.Text = L.T("本机 Claude 服务没开起来") + "：" + lcErr; NavAi.IsChecked = true; return false; }
+        }
         _c.Tools?.RefreshCalendar();
         if (_c.Tools?.ApplyHotkeys() is { Count: > 0 } bad)
         {

@@ -170,6 +170,25 @@
         </StackPanel>
         <TextBlock x:Name="AiTestHint" Foreground="#999" FontSize="12" Margin="70,6,0,0" TextWrapping="Wrap" Text="能看图的模型（例如带 vision / vl 的）可以直接看截图；看不了图的，会先在本机把截图识成文字再交给它。"/>
 
+        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#222" Margin="0,22,0,4">本机 Claude</TextBlock>
+        <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Text="用这台电脑上已经登录的 Claude（claude 命令行）来识别，不用另买密钥。打开后本工具在本机开一个小服务，只有这台电脑上的程序连得上；自家别的程序也可以接它。"/>
+        <CheckBox x:Name="LcOn" Style="{StaticResource Toggle}" Margin="0,10,0,4" Content="打开本机 Claude 服务"/>
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+          <TextBlock Text="端口" Width="70" VerticalAlignment="Center"/>
+          <TextBox x:Name="LcPort" Width="90" Height="28" VerticalContentAlignment="Center" Style="{StaticResource WinTextBox}"/>
+          <TextBlock Foreground="#999" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" Text="只听 127.0.0.1，别的电脑连不上"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <TextBlock Text="口令" Width="70" VerticalAlignment="Center"/>
+          <PasswordBox x:Name="LcToken" Width="300" Height="28" VerticalContentAlignment="Center" Padding="6,0"/>
+        </StackPanel>
+        <TextBlock Foreground="#999" FontSize="12" Margin="70,4,0,0" TextWrapping="Wrap" Text="自己定一串字，程序来问时要带上它。加密保存在本机。"/>
+        <StackPanel Orientation="Horizontal" Margin="70,10,0,0">
+          <Button x:Name="LcUse" Content="日历识别改用本机 Claude" Style="{StaticResource BtnW}"/>
+          <Button x:Name="LcDoc" Content="接口说明" Style="{StaticResource BtnW}" Margin="10,0,0,0"/>
+        </StackPanel>
+        <TextBlock x:Name="LcHint" Foreground="#999" FontSize="12" Margin="70,6,0,0" TextWrapping="Wrap"/>
+
         <TextBlock FontSize="13" FontWeight="Bold" Foreground="#222" Margin="0,22,0,4">隐私</TextBlock>
         <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Text="只有你点“识别”的时候，丢进来的文字和截图才会发给上面这个服务，平时不联网。用公司一体机或本机 Ollama，内容不出公司 / 不出电脑；用外面的服务，内容会发到对方服务器。"/>
       </StackPanel>
@@ -180,7 +199,7 @@
       <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">New B Desk</TextBlock>
       <TextBlock x:Name="VersionText" Foreground="#999" Margin="0,6,0,0"/>
       <TextBlock Foreground="#666" Margin="0,14,0,0" TextWrapping="Wrap" LineHeight="22">
-        纯本机工具，不上报、没有后台服务；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。<LineBreak/>
+        纯本机工具，不上报；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。打开“本机 Claude 服务”后，只在本机 127.0.0.1 上等自家程序来问。<LineBreak/>
         数据位置：<Run x:Name="DataDirRun"/>
       </TextBlock>
       <Button x:Name="OpenData" Content="打开数据文件夹" Style="{StaticResource BtnW}" HorizontalAlignment="Left" Margin="0,12,0,0"/>

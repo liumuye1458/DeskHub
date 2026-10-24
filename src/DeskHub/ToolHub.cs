@@ -79,6 +79,7 @@ public sealed class ToolHub : IDisposable
         CheckTrips();
         SyncGuides(flash: false);
         ApplyVaultApi();
+        ApplyLocalClaude();
 
         if (_sandbox) return; // 沙盒测试不抢真实的快捷键
         _keys = new Hotkeys();
@@ -165,6 +166,24 @@ public sealed class ToolHub : IDisposable
             _vault.Closed += (_, _) => { _vault = null; Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, App.TrimMemory); };
         }
         _vault.Popup();
+    }
+
+    // ---------------- 本机 Claude 小服务 ----------------
+    Core.LocalClaude? _claude;
+    public Core.LocalClaude? LocalClaude => _claude;
+    /// <summary>没开起来的原因（端口被占、没填口令），设置页显示。</summary>
+    public string LocalClaudeError { get; private set; } = "";
+
+    /// <summary>按设置开 / 关 / 换端口口令重开（默认关）。</summary>
+    public void ApplyLocalClaude()
+    {
+        _claude?.Dispose();
+        _claude = null;
+        LocalClaudeError = "";
+        if (!_c.Cfg.LocalClaude) return;
+        var s = new Core.LocalClaude(_c.Cfg.LocalClaudePort, Core.Secret.Unprotect(_c.Cfg.LocalClaudeToken));
+        if (s.Start()) _claude = s;
+        else LocalClaudeError = s.Error;
     }
 
     // ---------------- 密码箱对外接口 ----------------
@@ -412,6 +431,7 @@ public sealed class ToolHub : IDisposable
         Core.SecretClipboard.ClearNow();
         _arrToast?.Close();
         _api?.Dispose();
+        _claude?.Dispose();
         _dock?.Close();
     }
 }
