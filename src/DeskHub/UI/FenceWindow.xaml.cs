@@ -72,6 +72,17 @@ public partial class FenceWindow : Window
         Header.MouseLeftButtonUp += (_, _) => EndMove();
         Header.LostMouseCapture += (_, _) => EndMove();
         MenuBtn.Click += (_, _) => _host.ShowFenceMenu(this);
+        Header.MouseRightButtonUp += (_, e) => { _host.ShowFenceMenu(this); e.Handled = true; };
+        // 标题栏上 Ctrl+滚轮：调底色深浅
+        Header.PreviewMouseWheel += (_, e) =>
+        {
+            if (Keyboard.Modifiers != ModifierKeys.Control) return;
+            LookPopup.Nudge(Key, TitleText.Text, this, e.Delta > 0 ? 1 : -1);
+            e.Handled = true;
+        };
+        ApplyLook();
+        BgLook.Changed += ApplyLook;
+        Closed += (_, _) => BgLook.Changed -= ApplyLook;
         FooterLink.MouseLeftButtonUp += (_, _) => _host.FooterClicked();
         Grip.DragStarted += (_, _) => { _sizeFrom = Cursor(); _sizeStart = new Size(Width, Height); };
         Grip.DragDelta += OnGrip;
@@ -104,7 +115,10 @@ public partial class FenceWindow : Window
     public bool ShowChips { get; set; }
     public bool ShowNewDot { get; set; }
     public bool ShowDaysBadge { get; set; }
-    public bool Cold { set { Root.Background = (Brush)FindResource(value ? "FenceBgCold" : "FenceBg"); Root.BorderThickness = new Thickness(1); if (value) Root.BorderBrush = DashedBorder(); } }
+    bool _cold;
+    public bool Cold { set { _cold = value; ApplyLook(); Root.BorderThickness = new Thickness(1); if (value) Root.BorderBrush = DashedBorder(); } }
+    /// <summary>底色深浅：按壁纸记的全局值，或者这一块单独调的值（冷却区再浅一点）。</summary>
+    void ApplyLook() => Root.Background = BgLook.Brush(BgLook.Of(Key) * (_cold ? BgLook.ColdRatio : 1));
     public string EmptyHint { get; set; } = "";
     public IReadOnlyList<TopicRule> Topics { get; set; } = Array.Empty<TopicRule>();
     public Func<IEnumerable<DesktopItem>, IEnumerable<DesktopItem>> Sort { get; set; } = x => x;

@@ -71,6 +71,8 @@ public partial class App : Application
         L.HookWindows();
 
         var cfg = AppConfig.Load();
+        if (sandbox != null) UI.BgLook.FakeWallpaper = "sandbox-wallpaper-A.jpg|1"; // 沙盒不读真实壁纸
+        UI.BgLook.Init(cfg);
         if (sandbox != null && !File.Exists(Path.Combine(AppConfig.DataDir, "config.json")))
             cfg.ArchiveRoot = Path.Combine(sandbox, "桌面归档");
         cfg.Save();
@@ -551,6 +553,31 @@ public partial class App : Application
                                 break;
                         }
                         break;
+                    case "look": // 底色深浅：get / set 0.5 / own 键 0.6|- / wall 假壁纸名 / nudge 键 1|-1 / pop 键 文件 / snap 文件 [壁纸图]
+                        var la = line.Split(' ', StringSplitOptions.RemoveEmptyEntries); // 路径里没有空格
+                        switch (la[1])
+                        {
+                            case "real": report.Add("real wallpaper → " + UI.BgLook.ReadRealWallpaper().Replace("\n", " ‖ ")); break;
+                            case "set": UI.BgLook.SetGlobal(double.Parse(la[2], System.Globalization.CultureInfo.InvariantCulture)); break;
+                            case "own": UI.BgLook.SetOwn(la[2], la[3] == "-" ? null : double.Parse(la[3], System.Globalization.CultureInfo.InvariantCulture)); break;
+                            case "wall": UI.BgLook.FakeWallpaper = la[2]; UI.BgLook.CheckWallpaper(); break;
+                            case "nudge":
+                                var nb = _ctl!.TestBlock(la[2])!;
+                                UI.LookPopup.Nudge(la[2], la[2], nb, int.Parse(la[3]));
+                                await Task.Delay(300);
+                                break;
+                            case "pop":
+                                var pb = _ctl!.TestBlock(la[2])!;
+                                UI.LookPopup.Open(la[2], (pb as FenceWindow)?.TitleText.Text ?? L.T("日历"), pb);
+                                await Task.Delay(400);
+                                RenderWindow(UI.LookPopup.Current!, la[3]);
+                                UI.LookPopup.Current!.Close();
+                                break;
+                            case "snap": await Task.Delay(300); _ctl!.Snapshot(la[2], la.Length > 3 ? la[3] : null); break;
+                        }
+                        UI.BgLook.Save();
+                        report.Add($"look → wall={UI.BgLook.Wallpaper} remembered={UI.BgLook.Remembered} global={UI.BgLook.Global} cal={UI.BgLook.Of("calendar")} active={UI.BgLook.Of("active")}");
+                        break;
                     case "vaultapi": // vaultapi on|off / answer once|always|deny / shot 文件
                         var va = parts[1];
                         if (va is "on" or "off") { _ctl!.Cfg.VaultApi = va == "on"; _tools!.ApplyVaultApi(); }
@@ -616,10 +643,12 @@ public partial class App : Application
         var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(w);
         var el = (FrameworkElement)w.Content;
         el.UpdateLayout();
-        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(el.ActualWidth * dpi.DpiScaleX), (int)(el.ActualHeight * dpi.DpiScaleY), 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, System.Windows.Media.PixelFormats.Pbgra32);
+        // 内容带外边距（留给阴影）时，画出来会往右下偏这么多：图要连边距一起算，不然右边和下边被裁掉
+        double cw = el.ActualWidth + el.Margin.Left + el.Margin.Right, ch = el.ActualHeight + el.Margin.Top + el.Margin.Bottom;
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(cw * dpi.DpiScaleX), (int)(ch * dpi.DpiScaleY), 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, System.Windows.Media.PixelFormats.Pbgra32);
         var dv = new System.Windows.Media.DrawingVisual();
         // 先铺一层桌面似的底色，再原样画窗口内容（不用 VisualBrush，它会把内容拉伸到铺满）
-        using (var dc = dv.RenderOpen()) dc.DrawRectangle(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3a, 0x5a, 0x7a)), null, new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+        using (var dc = dv.RenderOpen()) dc.DrawRectangle(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3a, 0x5a, 0x7a)), null, new Rect(0, 0, cw, ch));
         rtb.Render(dv);
         rtb.Render(el);
         var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();

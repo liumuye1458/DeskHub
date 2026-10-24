@@ -826,5 +826,19 @@
  "纯本机工具，不上报；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。打开“本机 Claude 服务”后，只在本机 127.0.0.1 上等自家程序来问。": "Alat lokal tanpa telemetri. Konten hanya dikirim ke layanan AI yang Anda atur, dan hanya saat Anda klik Kenali. Jika layanan Claude lokal aktif, alat ini hanya menunggu program Anda sendiri di 127.0.0.1.",
  "自己定一串字，程序来问时要带上它。加密保存在本机。": "Buat sendiri sebuah teks; program harus menyertakannya di setiap permintaan. Disimpan terenkripsi di komputer ini.",
  "说明文件不见了": "File panduan tidak ada",
- "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "Perintah claude tidak ditemukan di komputer ini. Pasang, jalankan claude sekali untuk login, lalu coba lagi."
+ "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "Perintah claude tidak ditemukan di komputer ini. Pasang, jalankan claude sekali untuk login, lalu coba lagi.",
+ "分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。": "Latar semi-transparan untuk area, kalender, dan bilah alat; desktop langsung berubah saat digeser. Tiap wallpaper menyimpan pengaturannya sendiri dan dipulihkan saat Anda kembali ke wallpaper itu. Bisa juga tahan Ctrl dan gulir di bilah judul area atau kalender, atau klik kanan → Kepekatan latar…, termasuk mengatur satu blok saja.",
+ "只调这一块（{0}）": "Hanya blok ini ({0})",
+ "壁纸：{0}": "Wallpaper: {0}",
+ "底色深浅": "Kepekatan latar",
+ "底色深浅…": "Kepekatan latar…",
+ "当前壁纸": "wallpaper saat ini",
+ "打开后这一块单独记一个深浅，不跟着别的块变；关掉就回到和大家一样": "Jika aktif, blok ini punya kepekatan sendiri dan tidak ikut blok lain; matikan untuk kembali sama",
+ "按壁纸各记一份，换回这张时自动恢复": "Disimpan per wallpaper; dipulihkan saat kembali ke yang ini",
+ "桌面块的底色": "Latar blok",
+ "深": "Pekat",
+ "等": "dll.",
+ "纯色背景": "Warna polos",
+ "调底色深浅…": "Atur kepekatan latar…",
+ "透明": "Bening"
 }

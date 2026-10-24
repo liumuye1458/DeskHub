@@ -59,9 +59,12 @@ public sealed class DeskController : IFenceHost
         _displaySettle.Tick += (_, _) => { _displaySettle.Stop(); _displayBusy = false; OnDisplayStable(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanging += (_, _) => _ui.BeginInvoke(DisplayChanging);
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _ui.BeginInvoke(DisplayChanging);
+        // 换壁纸：系统会发“桌面设置变了”的通知（轮播有时不发，靠上面每 3 秒的检查兜底）
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += (_, e) => { if (e.Category == Microsoft.Win32.UserPreferenceCategory.Desktop) _ui.BeginInvoke(BgLook.CheckWallpaper); };
         // 兜底：系统通知偶尔会漏（或者来得太早，读到的还是旧屏幕），每 3 秒直接问一次系统现在接了哪些屏
         _displayPoll.Tick += (_, _) =>
         {
+            BgLook.CheckWallpaper();
             if (_displayBusy || _fakeSig != null) return;
             var now = DisplaySig();
             if (now != Cfg.LayoutSig) { Log($"定时检查发现屏幕变了：{Cfg.LayoutSig} → {now}"); DisplayChanging(); }
@@ -806,6 +809,10 @@ public sealed class DeskController : IFenceHost
         return Arranger.Snap(r, others, WA, Cfg.ArrangeGap, resize, DpiScale());
     }
 
+    /// <summary>测试用：按键或标题找分区窗口（calendar = 日历）。</summary>
+    public Window? TestBlock(string keyOrTitle) =>
+        keyOrTitle == "calendar" ? _cal : _fences.TryGetValue(keyOrTitle, out var f) ? f : _fences.Values.FirstOrDefault(v => v.TitleText.Text == keyOrTitle);
+
     public string TestSnap(string keyOrTitle, double x, double y)
     {
         var f = _fences.TryGetValue(keyOrTitle, out var ff) ? ff : _fences.Values.First(v => v.TitleText.Text == keyOrTitle);
@@ -1026,6 +1033,7 @@ public sealed class DeskController : IFenceHost
         var m = new System.Windows.Controls.ContextMenu();
         void Add(string text, Action a) { var mi = new System.Windows.Controls.MenuItem { Header = text }; mi.Click += (_, _) => a(); m.Items.Add(mi); }
         Add(L.T("新建分区…"), () => NewFence(fence));
+        Add(L.T("底色深浅…"), () => LookPopup.Open(fence.Key, fence.TitleText.Text, fence));
         if (fence.Zone == Zone.Custom)
         {
             Add(L.T("分区改名…"), () => RenameFence(fence));
@@ -1205,7 +1213,7 @@ public sealed class DeskController : IFenceHost
     }
 
     // ================= 调试：把整套桌面布局画成一张图（自查用，不影响使用者屏幕） =================
-    public void Snapshot(string file)
+    public void Snapshot(string file, string? wallpaper = null)
     {
         var wa = SystemParameters.WorkArea;
         var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(_fences["active"]);
@@ -1215,6 +1223,15 @@ public sealed class DeskController : IFenceHost
             var bg = new System.Windows.Media.LinearGradientBrush(
                 System.Windows.Media.Color.FromRgb(0x2c, 0x4f, 0x73), System.Windows.Media.Color.FromRgb(0xd9, 0xa2, 0x7a), 35);
             dc.DrawRectangle(bg, null, new Rect(0, 0, wa.Width, wa.Height));
+            // 测试底色深浅：可以垫一张真实的壁纸图（铺满，按比例裁）
+            if (wallpaper != null)
+            {
+                var img = new System.Windows.Media.Imaging.BitmapImage(new Uri(wallpaper));
+                double sc = Math.Max(wa.Width / img.Width, wa.Height / img.Height);
+                dc.PushClip(new System.Windows.Media.RectangleGeometry(new Rect(0, 0, wa.Width, wa.Height)));
+                dc.DrawImage(img, new Rect((wa.Width - img.Width * sc) / 2, (wa.Height - img.Height * sc) / 2, img.Width * sc, img.Height * sc));
+                dc.Pop();
+            }
             var wins = _fences.Values.Cast<Window>().Append(_clock!).Concat(_cal != null ? new Window[] { _cal } : Array.Empty<Window>()).Concat(Application.Current.Windows.OfType<LearnToast>())
                 .Concat(Tools?.DesktopWindows() ?? Enumerable.Empty<Window>()).Concat(Application.Current.Windows.OfType<ArrangeToast>().Where(t => t.IsVisible));
             foreach (var w in wins)

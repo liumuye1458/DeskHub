@@ -85,6 +85,7 @@ public partial class SettingsWindow : Window
         CalChinaHint.Text = L.F("已内置 {0} 年（国务院每年 11 月前后公布下一年的安排，公布后随新版本更新）", Holidays.ChinaYears);
         CalIndonesiaHint.Text = L.F("已内置 {0} 年（按印尼政府 SKB 3 Menteri 公布的日期）", Holidays.IndonesiaYears);
         ResetLayout.Click += (_, _) => _c.ResetLayout();
+        LookBtn.Click += (_, _) => LookPopup.Open(null, "", this, LookBtn);
         Layouts.Click += (_, _) => ((App)Application.Current).OpenLayouts();
 
         // 智能识别（AI 服务）

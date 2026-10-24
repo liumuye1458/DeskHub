@@ -826,5 +826,19 @@
  "纯本机工具，不上报；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。打开“本机 Claude 服务”后，只在本机 127.0.0.1 上等自家程序来问。": "Công cụ chỉ chạy cục bộ, không gửi dữ liệu thống kê. Nội dung chỉ được gửi tới dịch vụ AI bạn cấu hình, và chỉ khi bạn bấm Nhận dạng. Khi bật dịch vụ Claude cục bộ, nó chỉ chờ các chương trình của bạn tại 127.0.0.1.",
  "自己定一串字，程序来问时要带上它。加密保存在本机。": "Tự đặt một chuỗi; chương trình phải gửi kèm mỗi lần hỏi. Được lưu mã hóa trên máy này.",
  "说明文件不见了": "Không thấy tệp hướng dẫn",
- "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "Không tìm thấy lệnh claude trên máy này. Cài đặt, chạy claude một lần để đăng nhập rồi thử lại."
+ "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "Không tìm thấy lệnh claude trên máy này. Cài đặt, chạy claude một lần để đăng nhập rồi thử lại.",
+ "分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。": "Nền bán trong suốt của các vùng, lịch và thanh công cụ; kéo là màn hình nền đổi ngay. Mỗi hình nền nhớ thiết lập riêng và tự khôi phục khi đổi lại hình đó. Cũng có thể giữ Ctrl và lăn chuột trên thanh tiêu đề của vùng hoặc lịch, hoặc nhấp phải → Độ đậm nền…, và có thể chỉnh riêng một khối.",
+ "只调这一块（{0}）": "Chỉ khối này ({0})",
+ "壁纸：{0}": "Hình nền: {0}",
+ "底色深浅": "Độ đậm nền",
+ "底色深浅…": "Độ đậm nền…",
+ "当前壁纸": "hình nền hiện tại",
+ "打开后这一块单独记一个深浅，不跟着别的块变；关掉就回到和大家一样": "Khi bật, khối này có độ đậm riêng, không theo các khối khác; tắt để trở lại giống nhau",
+ "按壁纸各记一份，换回这张时自动恢复": "Lưu theo từng hình nền; tự khôi phục khi đổi lại hình này",
+ "桌面块的底色": "Nền các khối",
+ "深": "Đậm",
+ "等": "v.v.",
+ "纯色背景": "Màu trơn",
+ "调底色深浅…": "Chỉnh độ đậm nền…",
+ "透明": "Trong"
 }

@@ -197,7 +197,19 @@ public sealed class CalendarWidget : Window
         grid.Children.Add(_body);
         Grid.SetRowSpan(grip, 2);
         grid.Children.Add(grip);
-        Content = new Border { Background = Res<Brush>("FenceBg"), BorderBrush = Res<Brush>("FenceBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = grid };
+        var root = new Border { BorderBrush = Res<Brush>("FenceBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = grid };
+        Content = root;
+        void Look() => root.Background = BgLook.Brush(BgLook.Of(LookKey));
+        Look();
+        BgLook.Changed += Look;
+        Closed += (_, _) => BgLook.Changed -= Look;
+        head.MouseRightButtonUp += (_, e) => { ShowMenu(menu); e.Handled = true; };
+        head.PreviewMouseWheel += (_, e) =>
+        {
+            if (Keyboard.Modifiers != ModifierKeys.Control) return;
+            LookPopup.Nudge(LookKey, L.T("日历"), this, e.Delta > 0 ? 1 : -1);
+            e.Handled = true;
+        };
 
         _tip.PlacementTarget = _cells;
         _tip.Child = new Border
@@ -640,6 +652,9 @@ public sealed class CalendarWidget : Window
         if (data != null) _import.Take(data);
     }
 
+    /// <summary>底色深浅里这一块的键（和布局里的键一样）。</summary>
+    const string LookKey = "calendar";
+
     // ================= 菜单 / 键盘 =================
     void ShowMenu(FrameworkElement at)
     {
@@ -652,6 +667,7 @@ public sealed class CalendarWidget : Window
             m.Items.Add(mi);
         }
         Add(L.T("回到今天"), GoToday);
+        Add(L.T("底色深浅…"), () => LookPopup.Open(LookKey, L.T("日历"), this));
         Add(L.T("＋ 记一笔"), () => OpenEditor(Today));
         Add("✨ " + L.T("智能识别（截图 / 聊天记录）…"), () => OpenImport(null));
         m.Items.Add(new Separator());

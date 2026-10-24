@@ -23,6 +23,16 @@ public sealed class CustomFence
 }
 
 /// <summary>分区在屏幕上的位置（相对主屏工作区左上角，单位：设备无关像素）。</summary>
+/// <summary>一张壁纸下桌面各块的底色深浅（见 UI/BgLook）。</summary>
+public sealed class WallLook
+{
+    /// <summary>0 = 全透明，0.25 = 原来的样子，最深 0.8。</summary>
+    public double Alpha { get; set; } = 0.25;
+    /// <summary>单独调过的块（键同布局里的键：分区键、calendar）。</summary>
+    public Dictionary<string, double> Own { get; set; } = new();
+    public DateTime Used { get; set; } = DateTime.Now;
+}
+
 public sealed class FenceLayout
 {
     public double X { get; set; }
@@ -112,6 +122,10 @@ public sealed class AppConfig
     public string AiKey { get; set; } = "";
     /// <summary>本机 Claude 小服务（只听 127.0.0.1，转给本机 claude -p）。默认关。</summary>
     public bool LocalClaude { get; set; }
+    /// <summary>每张壁纸各记一份底色深浅（键 = 各屏壁纸路径 + 大小）。</summary>
+    public Dictionary<string, WallLook> Looks { get; set; } = new();
+    /// <summary>最近一次调的全局深浅：没调过的新壁纸先用它。</summary>
+    public double LookLast { get; set; } = 0.25;
     public int LocalClaudePort { get; set; } = Core.LocalClaude.DefaultPort;
     /// <summary>别的程序来问时要带的口令（用户自己填），DPAPI 加密存。</summary>
     public string LocalClaudeToken { get; set; } = "";

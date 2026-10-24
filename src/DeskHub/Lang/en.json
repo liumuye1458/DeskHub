@@ -826,5 +826,19 @@
  "纯本机工具，不上报；只有你配了 AI 服务并点“识别”时，才会把那次的内容发给它。打开“本机 Claude 服务”后，只在本机 127.0.0.1 上等自家程序来问。": "A local-only tool with no telemetry. Content is sent only to the AI service you set up, and only when you click Recognize. With the local Claude service on, it just waits on 127.0.0.1 for your own programs.",
  "自己定一串字，程序来问时要带上它。加密保存在本机。": "Make up any string; programs must send it with each request. Stored encrypted on this computer.",
  "说明文件不见了": "The guide file is missing",
- "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "The claude command line wasn't found on this computer. Install it, run claude once to sign in, then try again."
+ "这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。": "The claude command line wasn't found on this computer. Install it, run claude once to sign in, then try again.",
+ "分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。": "The see-through background of fences, the calendar and the toolbar; the desktop updates as you drag. Each wallpaper keeps its own setting, restored when you switch back. You can also hold Ctrl and scroll on a fence or calendar title bar, or right-click it → Background depth…, where you can also adjust just that one block.",
+ "只调这一块（{0}）": "Only this block ({0})",
+ "壁纸：{0}": "Wallpaper: {0}",
+ "底色深浅": "Background depth",
+ "底色深浅…": "Background depth…",
+ "当前壁纸": "current wallpaper",
+ "打开后这一块单独记一个深浅，不跟着别的块变；关掉就回到和大家一样": "When on, this block keeps its own depth and doesn't follow the others; turn off to match the rest again",
+ "按壁纸各记一份，换回这张时自动恢复": "Saved per wallpaper; restored when you switch back to this one",
+ "桌面块的底色": "Block background",
+ "深": "Dark",
+ "等": "etc.",
+ "纯色背景": "Solid color",
+ "调底色深浅…": "Adjust background depth…",
+ "透明": "Clear"
 }

@@ -119,6 +119,11 @@
         </StackPanel>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,0,0,0" TextWrapping="Wrap" Text="例如店名、直播间口号。空着就不显示；最长和上面的时区那一行一样宽，超出的显示省略号。"/>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
+        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+          <TextBlock Text="桌面块的底色" VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <Button x:Name="LookBtn" Content="调底色深浅…" Style="{StaticResource BtnW}"/>
+        </StackPanel>
+        <TextBlock Foreground="#999" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Text="分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。"/>
 
         <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,24,0,4">日历</TextBlock>
         <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。"/>

@@ -24,7 +24,8 @@ public partial class DockWindow : Window
     /// <summary>展开时的位置（收起期间记着，展开回到这里）。</summary>
     public Point ExpandedPos { get; private set; }
 
-    static readonly Brush TabBg = (Brush)Application.Current.FindResource("FenceBg");
+    /// <summary>工具条的底色跟着全局深浅（BgLook）走。</summary>
+    static Brush TabBg => BgLook.Brush(BgLook.Global);
     static readonly Brush TabHover = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0));
 
     Point? _down;
@@ -33,6 +34,10 @@ public partial class DockWindow : Window
     public DockWindow()
     {
         InitializeComponent();
+        void Look() { Root.Background = TabBg; if (!Tab.IsMouseOver) Tab.Background = TabBg; }
+        Look();
+        BgLook.Changed += Look;
+        Closed += (_, _) => BgLook.Changed -= Look;
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
 
         // 整条都能拖：按下后挪动超过 4 像素就开始拖，松手时按钮不会被点到
