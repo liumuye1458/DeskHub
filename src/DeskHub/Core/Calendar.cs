@@ -152,25 +152,98 @@ public static class Holidays
     }
 }
 
-/// <summary>行程：某一天的一件事（一天可以有好几条）；可以提前一天在桌面弹一张便签提醒。存在 trips.json。</summary>
+//// <summary>
+/// 一条行程。机票、火车、酒店的要素是固定的，分字段存，显示时按固定模板排（一眼看清从哪到哪、几点）；其他事就是一句话。
+/// 一天可以有好几条；酒店、跨天的航班有结束那天，日历上连成一段。存在 trips.json。
+/// </summary>
 public sealed class Trip
 {
+    public const string Flight = "flight", Train = "train", Hotel = "hotel";
+
     public string Id { get; set; } = "";
-    /// <summary>yyyy-MM-dd</summary>
+    /// <summary>"" 普通日程 / flight / train / hotel。</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>yyyy-MM-dd：出发 / 入住 / 这件事那天。</summary>
     public string Date { get; set; } = "";
     /// <summary>HH:mm，没有就空着。</summary>
     public string Time { get; set; } = "";
+    /// <summary>到达 / 退房那天（和 Date 同一天就空着）。</summary>
+    public string EndDate { get; set; } = "";
+    /// <summary>到达 / 退房时间。</summary>
+    public string EndTime { get; set; } = "";
+    /// <summary>出发、到达城市（短名：雅加达、新加坡）。</summary>
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    /// <summary>出发、到达的机场 / 车站 / 航站楼（苏加诺-哈达 T3）。</summary>
+    public string FromAt { get; set; } = "";
+    public string ToAt { get; set; } = "";
+    /// <summary>航班号 / 车次。</summary>
+    public string No { get; set; } = "";
+    /// <summary>航空公司 / 铁路公司。</summary>
+    public string Carrier { get; set; } = "";
+    /// <summary>酒店名 / 地点。</summary>
+    public string Place { get; set; } = "";
+    /// <summary>普通日程：这件事；其他：补充一句（座位、订单备注）。</summary>
     public string Text { get; set; } = "";
     public bool Remind { get; set; } = true;
     /// <summary>提醒便签已经弹过了。</summary>
     public bool Reminded { get; set; }
 
-    public DateTime Day => DateTime.ParseExact(Date, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-    /// <summary>显示用：“07:45 雅加达 → 新加坡”。</summary>
-    public string Display => Time.Length > 0 ? Time + " " + Text : Text;
+    public DateTime Day => Parse(Date) ?? DateTime.Today;
+    /// <summary>最后一天（没有结束日就是当天）。</summary>
+    public DateTime LastDay => Parse(EndDate) is { } e && e > Day ? e : Day;
+    public bool IsTransport => Kind is Flight or Train;
+    public bool Covers(DateTime d) => d >= Day && d <= LastDay;
+
+    static DateTime? Parse(string s) => DateTime.TryParseExact(s, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    public Trip Clone() => (Trip)MemberwiseClone();
+
+    /// <summary>图标：✈ 🚄 🏨 •</summary>
+    public string Icon => Kind switch { Flight => "✈", Train => "🚄", Hotel => "🏨", _ => "•" };
+
+    /// <summary>短标题：雅加达 → 新加坡 / 酒店名 / 这件事。</summary>
+    public string Title => Kind switch
+    {
+        Flight or Train when From.Length > 0 || To.Length > 0 => $"{Or(From)} → {Or(To)}",
+        Flight or Train => No.Length > 0 ? No : Text,
+        Hotel => Place.Length > 0 ? Place : Text,
+        _ => Text,
+    };
+    static string Or(string s) => s.Length > 0 ? s : "?";
+
+    /// <summary>住几晚（酒店）。</summary>
+    public int Nights => Math.Max(0, (LastDay - Day).Days);
+
+    /// <summary>日历格子里写的几个字：飞去哪、住哪、什么事。</summary>
+    public string Chip(DateTime d) => Kind switch
+    {
+        Flight or Train => To.Length > 0 ? To : Title,
+        Hotel => Title,   // 色条从入住连到退房，不用再写“入住”
+        _ => Text,
+    };
+
+    /// <summary>一行写完（提醒便签、悬停提示、编辑框的列表）。</summary>
+    public string Display => Kind switch
+    {
+        Flight or Train => Join(Time, Title, No, EndTime.Length > 0 ? L.F("{0} 到", EndTime + PlusDays) : ""),
+        Hotel => Join(L.T("入住"), Title, Time, Nights > 0 ? L.F("住 {0} 晚", Nights) : ""),
+        _ => Join(Time, Text),
+    };
+    /// <summary>某一天看到的那一行：酒店退房那天写“退房 xx”，其余同 Display。</summary>
+    public string DisplayOn(DateTime d) => Kind == Hotel && Nights > 0 && d == LastDay ? Join(L.T("退房"), Title, EndTime) : Display;
+    static string Join(params string[] parts) => string.Join(" ", parts.Where(p => p.Length > 0));
+
+    /// <summary>到达比出发晚几天：“+1”。</summary>
+    public string PlusDays => LastDay > Day && IsTransport ? $"+{(LastDay - Day).Days}" : "";
+
+    /// <summary>空的（什么都没填）。</summary>
+    public bool IsEmpty => (Kind switch { Flight or Train => From + To + No, Hotel => Place, _ => Text }).Trim().Length == 0 && Text.Trim().Length == 0;
+
+    /// <summary>判断是不是同一条（识别重复加进来时去重）。</summary>
+    public string Sig => $"{Kind}|{Date}|{Time}|{No}|{From}|{To}|{Place}|{Text}";
 
     static readonly Regex LeadTime = new(@"^\s*([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)\b\s*", RegexOptions.Compiled);
-
     static readonly Regex AnyTime = new(@"(?<!\d)([01]?\d|2[0-3])\s*[:：.]\s*([0-5]\d)(?!\d)", RegexOptions.Compiled);
 
     /// <summary>“7:45”“07:45 PM”“19.30” → “07:45”“19:45”“19:30”；认不出就空。</summary>
@@ -183,13 +256,31 @@ public sealed class Trip
         return $"{h:00}:{m.Groups[2].Value}";
     }
 
-    /// <summary>把“08:30 雅加达 → 广州”拆成时间和事情（开头没写时间就只有事情）。</summary>
+    /// <summary>把“08:30 和客户吃饭”拆成时间和事情（开头没写时间就只有事情）。</summary>
     public static (string Time, string Text) Split(string s)
     {
         s = s.Trim();
         var m = LeadTime.Match(s);
         if (!m.Success || m.Length == s.Length) return ("", s);
         return ($"{int.Parse(m.Groups[1].Value):00}:{m.Groups[2].Value}", s[m.Length..].Trim());
+    }
+
+    /// <summary>整理一下：时间统一成 HH:mm，结束日不早于开始日、和开始同一天就清掉。</summary>
+    public void Tidy()
+    {
+        if (Kind is not (Flight or Train or Hotel) && Time.Trim().Length == 0) (Time, Text) = Split(Text); // “15:00 和客户吃饭”
+        Time = NormTime(Time); EndTime = NormTime(EndTime);
+        foreach (var p in new[] { nameof(From), nameof(To), nameof(FromAt), nameof(ToAt), nameof(No), nameof(Carrier), nameof(Place), nameof(Text) })
+        {
+            var pi = typeof(Trip).GetProperty(p)!;
+            pi.SetValue(this, ((string?)pi.GetValue(this) ?? "").Trim());
+        }
+        No = No.Replace(" ", "").ToUpperInvariant();
+        if (Kind is not (Flight or Train or Hotel)) Kind = "";
+        if (Parse(EndDate) is not { } e || e <= Day) EndDate = "";
+        // 机票、火车：到达时间比出发早又没写到达日，多半是第二天到
+        if (IsTransport && EndDate.Length == 0 && Time.Length > 0 && EndTime.Length > 0 && string.CompareOrdinal(EndTime, Time) < 0)
+            EndDate = TripStore.Key(Day.AddDays(1));
     }
 }
 
@@ -210,48 +301,61 @@ public static class TripStore
         foreach (var t in Trips)
         {
             if (string.IsNullOrEmpty(t.Id)) t.Id = NewId();
-            if (t.Time.Length == 0) (t.Time, t.Text) = Trip.Split(t.Text);
+            if (t.Kind.Length == 0 && t.Time.Length == 0) (t.Time, t.Text) = Trip.Split(t.Text);
         }
-        Sort();
+        Trips.Sort(Order);
     }
 
-    static void Sort() => Trips.Sort((a, b) => { int c = string.CompareOrdinal(a.Date, b.Date); return c != 0 ? c : string.CompareOrdinal(a.Time, b.Time); });
+    /// <summary>按出行时间排：先日子，再时间（没写时间的排在那天最前面）。</summary>
+    public static int Order(Trip a, Trip b)
+    {
+        int c = string.CompareOrdinal(a.Date, b.Date);
+        return c != 0 ? c : string.CompareOrdinal(a.Time, b.Time);
+    }
 
     static void Save()
     {
-        Sort();
+        Trips.Sort(Order);
         try { AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(Trips, AppConfig.Json)); } catch { }
         Changed?.Invoke();
     }
 
-    /// <summary>这一天的所有行程（按时间排好）。</summary>
-    public static List<Trip> On(DateTime d) { var k = Key(d); return Trips.Where(t => t.Date == k).ToList(); }
-    public static bool Any(DateTime d) { var k = Key(d); return Trips.Any(t => t.Date == k); }
+    /// <summary>这一天有的行程（含跨到这天的酒店、隔天到的航班），按时间排好。</summary>
+    public static List<Trip> On(DateTime d) => Trips.Where(t => t.Covers(d)).ToList();
+    public static bool Any(DateTime d) => Trips.Any(t => t.Covers(d));
 
     /// <summary>
-    /// 新记一条或改一条（trip 为 null 就是新的）；文字为空就是删掉。文字开头的时间会拆到 Time 里。
-    /// 改了日子 / 时间 / 文字或打开提醒，提醒会重新弹（如果还没到日子）。
+    /// 存一条：edited 是改好的内容；original 是原来那条（新记的为 null）。内容全空就是删掉。
+    /// 改了日子 / 时间 / 内容或打开提醒，提醒会重新弹（如果还没到日子）。
     /// </summary>
-    public static Trip? Save(Trip? trip, DateTime d, string text, bool remind)
+    public static Trip? Put(Trip edited, Trip? original)
     {
-        var (time, body) = Trip.Split(text);
-        if (body.Length == 0) { if (trip != null) Remove(trip); return null; }
-        if (trip == null || !Trips.Contains(trip)) Trips.Add(trip = new Trip { Id = NewId() });
-        if (trip.Date != Key(d) || trip.Time != time || trip.Text != body || (remind && !trip.Remind)) trip.Reminded = false;
-        trip.Date = Key(d); trip.Time = time; trip.Text = body; trip.Remind = remind;
+        edited.Tidy();
+        if (edited.IsEmpty) { if (original != null) Remove(original); return null; }
+        var t = original != null && Trips.Contains(original) ? original : null;
+        if (t == null) { Trips.Add(t = edited); t.Id = NewId(); }
+        else
+        {
+            bool changed = t.Sig != edited.Sig || (edited.Remind && !t.Remind);
+            var id = t.Id;
+            foreach (var p in typeof(Trip).GetProperties().Where(p => p.CanWrite)) p.SetValue(t, p.GetValue(edited));
+            t.Id = id;
+            if (changed) t.Reminded = false;
+        }
         Save();
-        return trip;
+        return t;
     }
 
-    /// <summary>一次加好几条（智能识别出来的）；同一天、同一时间、同样文字的不重复加。返回加了几条。</summary>
-    public static int AddMany(IEnumerable<(DateTime Day, string Time, string Text, bool Remind)> items)
+    /// <summary>一次加好几条（智能识别出来的）；和已有的一模一样的不重复加。返回加了几条。</summary>
+    public static int AddMany(IEnumerable<Trip> items)
     {
         int n = 0;
-        foreach (var (d, time, text, remind) in items)
+        foreach (var it in items)
         {
-            var body = text.Trim();
-            if (body.Length == 0 || Trips.Any(t => t.Date == Key(d) && t.Time == time && t.Text == body)) continue;
-            Trips.Add(new Trip { Id = NewId(), Date = Key(d), Time = time, Text = body, Remind = remind });
+            it.Tidy();
+            if (it.IsEmpty || Trips.Any(t => t.Sig == it.Sig)) continue;
+            it.Id = NewId(); it.Reminded = false;
+            Trips.Add(it);
             n++;
         }
         if (n > 0) Save();
@@ -260,7 +364,8 @@ public static class TripStore
 
     public static void Remove(Trip t) { if (Trips.Remove(t)) Save(); }
 
-    public static IEnumerable<Trip> Upcoming(DateTime today) => Trips.Where(t => string.CompareOrdinal(t.Date, Key(today)) >= 0);
+    /// <summary>还没结束的（今天及以后，含正住着的酒店）。</summary>
+    public static IEnumerable<Trip> Upcoming(DateTime today) => Trips.Where(t => t.LastDay >= today);
 
     /// <summary>
     /// 到了行程前一天（或者行程当天还没提醒过，比如前一天没开电脑）：在桌面弹一张便签，点 OK 就收起。
@@ -277,7 +382,7 @@ public static class TripStore
             var head = t.Day == today ? L.F("今天 · {0}", CalText.Short(t.Day)) : L.F("明天 · {0}", CalText.Short(t.Day));
             GuideStore.D.Notes.Add(new GuideNote
             {
-                Text = head + "\n" + t.Display, Color = "blue", Arrow = false, Daily = false, Topmost = false,
+                Text = head + "\n" + t.Icon + " " + t.Display, Color = "blue", Arrow = false, Daily = false, Topmost = false,
                 X = workArea.Right - 330 - i * 24, Y = workArea.Top + 120 + i * 24, W = 280,
             });
             t.Reminded = true;
@@ -289,13 +394,15 @@ public static class TripStore
     }
 }
 
-/// <summary>日历里的日期写法：中文用“12月24日 周四”，其他语言用该语言的习惯写法。</summary>
+// <summary>日历里的日期写法：中文用“12月24日 周四”，其他语言用该语言的习惯写法。</summary>
 public static class CalText
 {
     static readonly string[] ZhWeek = { "日", "一", "二", "三", "四", "五", "六" };
 
     public static string WeekShort(DayOfWeek w) => L.IsZh ? ZhWeek[(int)w] : L.Culture.DateTimeFormat.GetAbbreviatedDayName(w);
     public static string Short(DateTime d) => L.IsZh ? $"{d.Month}月{d.Day}日 周{ZhWeek[(int)d.DayOfWeek]}" : d.ToString("ddd d MMM", L.Culture);
+    public static string MonthDay(DateTime d) => L.IsZh ? $"{d.Month}月{d.Day}日" : d.ToString("d MMM", L.Culture);
+    public static string Weekday(DateTime d) => L.IsZh ? "周" + ZhWeek[(int)d.DayOfWeek] : L.Culture.DateTimeFormat.GetAbbreviatedDayName(d.DayOfWeek);
     public static string Long(DateTime d) => L.IsZh ? $"{d.Month}月{d.Day}日 星期{ZhWeek[(int)d.DayOfWeek]}" : d.ToString("dddd, d MMMM", L.Culture);
     public static string Month(DateTime d) => L.IsZh ? $"{d.Year}年{d.Month}月" : d.ToString("MMMM yyyy", L.Culture);
 }

@@ -437,7 +437,10 @@ public partial class App : Application
                                 case "hover": cw!.TestHover(Dt(a2)); break;
                                 case "edit": _calEd = cw!.TestEdit(Dt(a2)); _calEd?.KeepOpenForTest(); await Task.Delay(300); break;
                                 case "edshot": RenderWindow(_calEd!, a2); _calEd!.Close(); break;
-                                case "trip": { var f = a2.Split('|'); Core.TripStore.Save(null, Dt(f[0]), f[1], f.Length < 3 || f[2] == "1"); } break;
+                                case "trip": { var f = a2.Split('|'); Core.TripStore.Put(new Core.Trip { Date = f[0], Text = f[1], Remind = f.Length < 3 || f[2] == "1" }, null); } break;
+                                // tripj {"Kind":"flight","Date":"2026-11-06",...}：直接加一条结构化的
+                                case "tripj": Core.TripStore.Put(System.Text.Json.JsonSerializer.Deserialize<Core.Trip>(a2)!, null); break;
+                                case "hl": cw!.TestHl(Dt(a2)); break;
                                 case "trips": report.Add("trips → " + string.Join(" / ", Core.TripStore.Trips.Select(t => $"{t.Date} {t.Display}"))); break;
                                 // 智能识别：import 打开 / imptext 文字 / impimg 图片路径 / imprun 识别 / impstatus / impshot 文件 / impadd 加入
                                 case "import": _calImp = cw!.TestImport(); await Task.Delay(300); break;

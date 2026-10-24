@@ -9,9 +9,6 @@ using System.Text.RegularExpressions;
 
 namespace DeskHub.Core;
 
-/// <summary>识别出来的一条日程（还没存进日历）。</summary>
-public sealed record TripDraft(DateTime Day, string Time, string Text);
-
 /// <summary>
 /// 智能识别：把截图、聊天记录、订单文字变成一条条日程。
 /// 配了 AI 服务（OpenAI 兼容格式：公司一体机、OpenAI、Claude、DeepSeek、通义、Ollama……）就交给 AI；
@@ -33,7 +30,7 @@ public static class TripAi
     }
 
     /// <summary>识别结果：条目 + 一句说明（比如“这个模型看不了图，先在本机识了字”）。</summary>
-    public sealed record Result(List<TripDraft> Items, string Note);
+    public sealed record Result(List<Trip> Items, string Note);
 
     public static async Task<Result> Extract(AppConfig c, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
     {
@@ -142,16 +139,21 @@ public static class TripAi
 
     static string Prompt(DateTime today) =>
         $$"""
-        You turn the user's material (screenshots of booking apps such as Fliggy, Ctrip/Trip.com, Traveloka, airline or hotel apps; chat logs; emails; notes) into calendar items: flights, trains, buses, hotel check-in/check-out, meetings, appointments, deadlines, events, things to do.
+        You turn the user's material (screenshots of booking apps such as Fliggy, Ctrip/Trip.com, Traveloka, airline, rail or hotel apps; chat logs; emails; notes) into calendar items.
         Today is {{today:yyyy-MM-dd}} ({{today.ToString("dddd", CultureInfo.InvariantCulture)}}). Resolve relative dates (tomorrow, next Wednesday, 明天, 后天, 下周三, besok, lusa…) against today. If a date has no year, use the nearest one that is not in the past.
+        Ignore booking / payment / order-creation dates and times: only the dates when things actually happen count.
         Reply with JSON only, no explanation:
-        {"items":[{"date":"yyyy-MM-dd","time":"HH:mm or empty","text":"..."}]}
-        Rules for "text": one line, at most 40 characters, in the same language as the material; keep what a person needs to see at a glance (flight/train number, from → to, hotel name, who/where for a meeting). Do not repeat the date or time in it.
-        One item per leg / per event: a round trip is two items; a hotel stay is check-in (and check-out if given). Skip prices, order numbers, ads and boilerplate.
+        {"items":[{"kind":"flight|train|hotel|event","date":"yyyy-MM-dd","time":"HH:mm","end_date":"yyyy-MM-dd","end_time":"HH:mm","from":"","to":"","from_at":"","to_at":"","no":"","carrier":"","place":"","text":""}]}
+        Fields:
+        - flight, train (also bus / ferry → "train"): date+time = departure, end_date+end_time = arrival (local times as printed). from / to = short CITY names (雅加达, 新加坡, Guangzhou), never airport names. from_at / to_at = airport or station short name plus terminal, e.g. "苏加诺-哈达 T3", "广州南站". no = flight / train number without spaces (SQ951, G1234). carrier = airline / operator. text = seat, cabin or a short note, or "".
+        - hotel: date = check-in day, end_date = check-out day, time = check-in time if printed. place = hotel name (short, no address). text = room type or "".
+        - event (meetings, appointments, deadlines, anything else): date, time = start, end_time if given, place if given. text = what it is, at most 30 characters, without the date/time.
+        Leave unknown fields as "". Write names and text in the same language as the material.
+        One item per leg / per event: a round trip is two flights; a connecting journey is one item per flight. Skip prices, order numbers, ads and boilerplate.
         If there is nothing schedulable, reply {"items":[]}.
         """;
 
-    static async Task<List<TripDraft>> Ask(string url, string key, string model, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
+    static async Task<List<Trip>> Ask(string url, string key, string model, string text, IReadOnlyList<byte[]> images, DateTime today, CancellationToken ct)
     {
         JsonNode user;
         if (images.Count == 0) user = text.Length > 0 ? text : "(empty)";
@@ -184,11 +186,14 @@ public static class TripAi
             content = msg is JsonArray a ? string.Concat(a.Select(p => p?["text"]?.ToString() ?? "")) : msg?.ToString() ?? "";
         }
         catch { throw new AiException(L.T("AI 服务回的内容看不懂（不是 OpenAI 兼容格式？）")); }
-        return ParseItems(content, today) ?? throw new AiException(L.T("AI 回的内容里没找到日程清单，可以再试一次"));
+        return ParseItems(content) ?? throw new AiException(L.T("AI 回的内容里没找到日程清单，可以再试一次"));
     }
 
+    static DateTime? Day(string? s) =>
+        DateTime.TryParseExact((s ?? "").Trim(), new[] { "yyyy-MM-dd", "yyyy-M-d", "yyyy/M/d", "yyyy.M.d" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
     /// <summary>从 AI 的回复里取出清单（容忍 ```json 包裹、前后有废话、直接回数组）。null = 完全看不懂。</summary>
-    internal static List<TripDraft>? ParseItems(string content, DateTime today)
+    internal static List<Trip>? ParseItems(string content)
     {
         int a = content.IndexOfAny(new[] { '{', '[' }), b = Math.Max(content.LastIndexOf('}'), content.LastIndexOf(']'));
         if (a < 0 || b <= a) return null;
@@ -196,16 +201,29 @@ public static class TripAi
         try { root = JsonNode.Parse(content[a..(b + 1)]); } catch { return null; }
         var arr = root as JsonArray ?? root?["items"] as JsonArray;
         if (arr == null) return null;
-        var list = new List<TripDraft>();
+        var list = new List<Trip>();
         foreach (var it in arr)
         {
-            var ds = it?["date"]?.ToString() ?? "";
-            if (!DateTime.TryParseExact(ds.Trim(), new[] { "yyyy-MM-dd", "yyyy-M-d", "yyyy/M/d", "yyyy.M.d" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)) continue;
-            var time = Trip.NormTime(it?["time"]?.ToString() ?? "");
-            var t = (it?["text"] ?? it?["title"])?.ToString()?.Trim() ?? "";
-            if (t.Length == 0) continue;
-            list.Add(new TripDraft(day, time, t.Length > 80 ? t[..80] : t));
+            if (it == null || Day(it["date"]?.ToString()) is not { } day) continue;
+            string S(string k) { var v = it[k]?.ToString()?.Trim() ?? ""; return v.Length > 60 ? v[..60] : v; }
+            var kind = S("kind").ToLowerInvariant() switch
+            {
+                "flight" or "plane" or "air" => Trip.Flight,
+                "train" or "bus" or "ferry" or "rail" => Trip.Train,
+                "hotel" or "lodging" or "stay" => Trip.Hotel,
+                _ => "",
+            };
+            var t = new Trip
+            {
+                Kind = kind, Date = TripStore.Key(day), Time = S("time"),
+                EndDate = Day(S("end_date")) is { } e ? TripStore.Key(e) : "", EndTime = S("end_time"),
+                From = S("from"), To = S("to"), FromAt = S("from_at"), ToAt = S("to_at"),
+                No = S("no"), Carrier = S("carrier"), Place = S("place"), Text = S("text").Length > 0 ? S("text") : S("title"),
+            };
+            t.Tidy();
+            if (!t.IsEmpty) list.Add(t);
         }
+        list.Sort(TripStore.Order);
         return list;
     }
 
@@ -227,14 +245,28 @@ public static class TripAi
             using var bmp = await dec.GetSoftwareBitmapAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied, tf,
                 Windows.Graphics.Imaging.ExifOrientationMode.IgnoreExifOrientation, Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage);
             var r = await engine.RecognizeAsync(bmp);
-            // 中文识别结果字和字之间带空格，去掉
-            return string.Join("\n", r.Lines.Select(l => Regex.Replace(l.Text, @"(?<=[　-鿿＀-￯])\s+(?=[　-鿿＀-￯])", "")));
+            // 识别引擎是一栏一栏读的（左边读完才读右边），订单截图左右两栏的出发 / 到达就被拆散了；
+            // 按坐标把同一高度的几段拼回一行，从左到右
+            var rows = new List<(double Top, double Bottom, List<(double X, string Text)> Parts)>();
+            foreach (var l in r.Lines.Where(l => l.Words.Count > 0).OrderBy(l => l.Words.Min(w => w.BoundingRect.Y)))
+            {
+                double top = l.Words.Min(w => w.BoundingRect.Y), bottom = l.Words.Max(w => w.BoundingRect.Bottom), x = l.Words.Min(w => w.BoundingRect.X);
+                // 中文识别结果字和字之间带空格，去掉
+                var text = Regex.Replace(l.Text, @"(?<=[　-鿿＀-￯])\s+(?=[　-鿿＀-￯])", "");
+                int i = rows.FindIndex(row => Math.Min(bottom, row.Bottom) - Math.Max(top, row.Top) > 0.5 * Math.Min(bottom - top, row.Bottom - row.Top));
+                if (i < 0) rows.Add((top, bottom, new() { (x, text) }));
+                else { rows[i].Parts.Add((x, text)); rows[i] = (Math.Min(top, rows[i].Top), Math.Max(bottom, rows[i].Bottom), rows[i].Parts); }
+            }
+            return string.Join("\n", rows.OrderBy(row => row.Top).Select(row => string.Join("  ", row.Parts.OrderBy(p => p.X).Select(p => p.Text))));
         }
         catch { return ""; }
     }
 }
 
-/// <summary>没有 AI 时的本机规则：找日期（2026-11-06、11月6日、6 Nov、明天、下周三……），日期后面那一段当作这件事。</summary>
+//// <summary>
+/// 没有 AI 时的本机规则：找日期（2026-11-06、11月6日、6 Nov、明天、下周三……），日期后面那一段当作这件事；
+/// 那一段里有航班号 / 车次就按机票、火车拆出出发到达城市和时间，有酒店就记成入住。认不出像样内容的不要。
+/// </summary>
 public static class TripRules
 {
     static readonly string[] MonEn = { "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec" };
@@ -249,7 +281,7 @@ public static class TripRules
     const string MonRx = "(jan|feb|mar|apr|may|mei|jun|jul|aug|agu|agt|sep|oct|okt|nov|dec|des)[a-z]*\\.?";
     static readonly string WeekCn = "一二三四五六日天";
 
-    static readonly Regex Full = new(@"(20\d{2})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})\s*[日号]?", RegexOptions.Compiled);
+    static readonly Regex Full = new(@"(20\d{2})\s*[-/.年·]\s*(\d{1,2})\s*[-/.月·\s]\s*(\d{1,2})(?!\d)\s*[日号]?", RegexOptions.Compiled);
     static readonly Regex Cn = new(@"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?", RegexOptions.Compiled);
     static readonly Regex DMon = new(@"(?<![\d\w])(\d{1,2})\s+" + MonRx + @"(\s+(20\d{2}))?(?![a-z])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     static readonly Regex MonD = new(@"(?<![\w])" + MonRx + @"\s+(\d{1,2})(?!\d)(,?\s+(20\d{2}))?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -257,12 +289,41 @@ public static class TripRules
     static readonly Regex Week = new(@"(下下|下个?|这个?|本)?(周|星期|礼拜)([一二三四五六日天])", RegexOptions.Compiled);
     static readonly Regex TimeRx = new(@"(?<!\d)([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)(?!\d)", RegexOptions.Compiled);
     static readonly Regex Junk = new(@"(周|星期|礼拜)[一二三四五六日天]|上午|中午|下午|傍晚|晚上|早上|\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)(day)?\b\.?,?|(Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu),?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    /// <summary>下单、付款这类时间不是出行时间：这些行里的日期不算。</summary>
+    static readonly Regex OrderLine = new(@"下单|预订时间|预定时间|订单时间|创建时间|支付|付款|出票时间|booked|booking date|ordered|paid|dipesan|dibayar", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex FlightNo = new(@"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]|[0-9][A-Za-z])\s?(\d{2,4})(?![0-9])", RegexOptions.Compiled);
+    static readonly Regex TrainNo = new(@"(?<![A-Za-z0-9])([GDCZTKYL])(\d{1,4})(?![0-9])", RegexOptions.Compiled);
+    static readonly Regex HotelRx = new(@"[\p{L}\p{N}·&'\- ]{0,24}?(酒店|宾馆|饭店|民宿|公寓|Hotel|Resort|Hostel|Inn|Villa)[\p{L}\p{N}·&'\- ]{0,16}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex CarrierRx = new(@"([\p{IsCJKUnifiedIdeographs}]{2,6}航空)|([A-Z][a-z]+ (Airlines|Airways|Air))", RegexOptions.Compiled);
 
-    public static List<TripDraft> Parse(string text, DateTime today)
+    /// <summary>常见城市（中文 / 英文 / 印尼文 / 三字码）。截图里按出现先后：第一个是出发，第二个是到达。</summary>
+    static readonly string[] Cities =
+    {
+        "雅加达", "新加坡", "广州", "深圳", "上海", "北京", "香港", "澳门", "台北", "吉隆坡", "曼谷", "普吉", "清迈", "巴厘岛", "登巴萨", "泗水", "棉兰", "万隆", "日惹", "三宝垄", "望加锡", "巴淡",
+        "杭州", "成都", "重庆", "西安", "厦门", "福州", "昆明", "南宁", "海口", "三亚", "武汉", "长沙", "南京", "青岛", "天津", "郑州", "济南", "沈阳", "大连", "哈尔滨", "贵阳",
+        "汕头", "揭阳", "珠海", "温州", "宁波", "合肥", "南昌", "兰州", "乌鲁木齐", "东京", "大阪", "名古屋", "福冈", "首尔", "釜山", "胡志明", "河内", "岘港", "马尼拉", "宿务",
+        "金边", "暹粒", "仰光", "新德里", "孟买", "迪拜", "多哈", "伊斯坦布尔", "伦敦", "巴黎", "法兰克福", "阿姆斯特丹", "罗马", "米兰", "悉尼", "墨尔本", "珀斯", "奥克兰",
+        "纽约", "洛杉矶", "旧金山", "温哥华", "多伦多",
+        "Jakarta", "Singapore", "Guangzhou", "Shenzhen", "Shanghai", "Beijing", "Hong Kong", "Macau", "Taipei", "Kuala Lumpur", "Bangkok", "Phuket", "Bali", "Denpasar",
+        "Surabaya", "Medan", "Bandung", "Yogyakarta", "Semarang", "Makassar", "Batam", "Tokyo", "Osaka", "Seoul", "Ho Chi Minh", "Hanoi", "Manila", "Dubai", "London", "Paris", "Sydney", "Melbourne",
+        "CGK", "HLP", "SIN", "CAN", "SZX", "PVG", "SHA", "PEK", "PKX", "HKG", "MFM", "TPE", "KUL", "BKK", "DMK", "HKT", "DPS", "SUB", "KNO", "BDO", "JOG", "YIA", "SRG", "UPG", "BTH",
+        "HGH", "CTU", "TFU", "CKG", "XIY", "XMN", "FOC", "KMG", "NNG", "HAK", "SYX", "WUH", "CSX", "NKG", "TAO", "TSN", "NRT", "HND", "KIX", "ICN", "SGN", "HAN", "MNL", "DXB", "LHR", "CDG", "SYD", "MEL",
+    };
+    static readonly Regex CityRx = new(string.Join("|", Cities.OrderByDescending(c => c.Length).Select(c => c.All(char.IsUpper) ? $@"\b{c}\b" : Regex.Escape(c))), RegexOptions.Compiled);
+
+    public static List<Trip> Parse(string text, DateTime today)
     {
         text = Normalize(text);
         var hits = new List<(int Start, int End, DateTime Day)>();
-        void Hit(Match m, DateTime? d) { if (d is { } day && !hits.Any(h => m.Index < h.End && h.Start < m.Index + m.Length)) hits.Add((m.Index, m.Index + m.Length, day)); }
+        bool OnOrderLine(int at)
+        {
+            int ls = text.LastIndexOf('\n', Math.Max(0, at - 1)) + 1, le = text.IndexOf('\n', at); if (le < 0) le = text.Length;
+            return OrderLine.IsMatch(text[ls..le]);
+        }
+        void Hit(Match m, DateTime? d)
+        {
+            if (d is { } day && !OnOrderLine(m.Index) && !hits.Any(h => m.Index < h.End && h.Start < m.Index + m.Length)) hits.Add((m.Index, m.Index + m.Length, day));
+        }
 
         foreach (Match m in Full.Matches(text)) Hit(m, Make(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)));
         foreach (Match m in Cn.Matches(text)) Hit(m, Near(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), today));
@@ -290,7 +351,7 @@ public static class TripRules
         }
         hits.Sort((a, b) => a.Start.CompareTo(b.Start));
 
-        var list = new List<TripDraft>();
+        var list = new List<Trip>();
         for (int i = 0; i < hits.Count; i++)
         {
             var h = hits[i];
@@ -304,28 +365,73 @@ public static class TripRules
                 int nextLine = text.LastIndexOf('\n', Math.Max(0, next - 1)) + 1;
                 to = nextLine > h.End ? nextLine : next;
             }
-            to = Math.Min(to, h.End + 160);
+            to = Math.Min(to, h.End + 220);
             var seg = text[from..h.Start] + " " + text[h.End..to];
-            var tm = TimeRx.Match(seg);
-            var time = "";
-            if (tm.Success)
-            {
-                int hh = int.Parse(tm.Groups[1].Value);
-                // “下午 3:00”“晚上 8:00”“3:00 pm”
-                var around = seg[Math.Max(0, tm.Index - 4)..Math.Min(seg.Length, tm.Index + tm.Length + 4)];
-                if (hh < 12 && Regex.IsMatch(around, "下午|晚上|傍晚|pm|sore|malam", RegexOptions.IgnoreCase)) hh += 12;
-                time = $"{hh:00}:{tm.Groups[2].Value}";
-            }
-            var s = TimeRx.Replace(seg, " ");
-            s = Junk.Replace(s, " ");
-            s = Regex.Replace(s, @"\s+", " ").Trim(' ', ',', '，', '、', '-', '—', '~', '～', '：', ':', '|', '/', '.', '。');
-            if (s.Length == 0 && time.Length == 0) continue;
-            if (s.Length > 40) s = s[..40].TrimEnd() + "…";
-            if (s.Length == 0) s = L.T("（没认出是什么事）");
-            var d = new TripDraft(h.Day, time, s);
-            if (!list.Contains(d)) list.Add(d);
+            // 订单号、价格那几行不要
+            seg = string.Join("\n", seg.Split('\n').Where(l => !OrderLine.IsMatch(l) && !Regex.IsMatch(l, @"订单号|order no|¥|￥|Rp\s?\d|CNY|IDR|\$\s?\d", RegexOptions.IgnoreCase)));
+            if (Build(h.Day, seg) is { } t && !list.Any(x => x.Sig == t.Sig)) list.Add(t);
         }
+        list.Sort(TripStore.Order);
         return list;
+    }
+
+    static List<string> Times(string seg)
+    {
+        var r = new List<string>();
+        foreach (Match tm in TimeRx.Matches(seg))
+        {
+            int hh = int.Parse(tm.Groups[1].Value);
+            // “下午 3:00”“晚上 8:00”“3:00 pm”
+            var around = seg[Math.Max(0, tm.Index - 4)..Math.Min(seg.Length, tm.Index + tm.Length + 4)];
+            if (hh < 12 && Regex.IsMatch(around, "下午|晚上|傍晚|pm|sore|malam", RegexOptions.IgnoreCase)) hh += 12;
+            r.Add($"{hh:00}:{tm.Groups[2].Value}");
+        }
+        return r;
+    }
+
+    /// <summary>一段文字 → 一条行程（认不出像样内容就 null）。</summary>
+    static Trip? Build(DateTime day, string seg)
+    {
+        var times = Times(seg);
+        var t = new Trip { Date = TripStore.Key(day), Time = times.FirstOrDefault() ?? "" };
+        var carrier = CarrierRx.Match(seg);
+        // 城市：去掉“新加坡航空”这种航空公司名再找
+        var forCity = carrier.Success ? seg.Replace(carrier.Value, " ") : seg;
+        var cities = CityRx.Matches(forCity).Select(m => m.Value).Distinct().ToList();
+
+        var fno = FlightNo.Matches(seg).FirstOrDefault(m => !Regex.IsMatch(m.Value, @"^([Tt]\d|[Aa]3\d|[Bb]7\d)") && Regex.IsMatch(m.Groups[1].Value, "[A-Za-z]"));
+        var tno = Regex.IsMatch(seg, "站|高铁|动车|火车|train|kereta", RegexOptions.IgnoreCase) ? TrainNo.Match(seg) : Match.Empty;
+        if (tno.Success || (fno != null && (cities.Count > 0 || times.Count >= 2 || Regex.IsMatch(seg, "航班|机场|起飞|flight|airport|penerbangan", RegexOptions.IgnoreCase))))
+        {
+            t.Kind = tno.Success ? Trip.Train : Trip.Flight;
+            t.No = tno.Success ? tno.Value : fno!.Value;
+            if (times.Count >= 2) t.EndTime = times[1];
+            if (cities.Count > 0) t.From = cities[0];
+            if (cities.Count > 1) t.To = cities[1];
+            if (carrier.Success) t.Carrier = carrier.Value;
+            t.Tidy();
+            return t;
+        }
+        var hotel = HotelRx.Match(seg);
+        if (hotel.Success && Regex.IsMatch(seg, "入住|酒店|hotel|check.?in|menginap", RegexOptions.IgnoreCase))
+        {
+            t.Kind = Trip.Hotel;
+            t.Place = Regex.Replace(hotel.Value, @"^(入住|预订|订)\s*", "").Trim();
+            t.Tidy();
+            return t;
+        }
+
+        // 普通日程：去掉时间、星期、零碎符号，剩下的当这件事
+        var s = TimeRx.Replace(seg, " ");
+        s = Junk.Replace(s, " ");
+        s = Regex.Replace(s, @"(?<![\p{L}])[\d\s·•.,，、:：()（）\[\]【】/|\-—~～]+(?![\p{L}])", " ");
+        s = Regex.Replace(s, @"\s+", " ").Trim(' ', ',', '，', '、', '-', '—', '~', '～', '：', ':', '|', '/', '.', '。');
+        // 有意思的字（汉字、字母）太少的，多半是识字识出来的碎片，不要
+        if (Regex.Matches(s, @"[\p{IsCJKUnifiedIdeographs}A-Za-z]").Count < 2) return null;
+        if (s.Length > 30) s = s[..30].TrimEnd() + "…";
+        t.Text = s;
+        t.Tidy();
+        return t;
     }
 
     static string Normalize(string s)
@@ -350,7 +456,7 @@ public static class TripRules
     }
 }
 
-/// <summary>用 Windows 自带的 DPAPI 加密小段文字（只有本机当前账户解得开），存密钥用。</summary>
+// <summary>用 Windows 自带的 DPAPI 加密小段文字（只有本机当前账户解得开），存密钥用。</summary>
 public static class Secret
 {
     [StructLayout(LayoutKind.Sequential)]

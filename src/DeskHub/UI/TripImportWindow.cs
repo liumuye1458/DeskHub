@@ -54,9 +54,8 @@ public sealed class TripImportWindow : Window
 
     sealed class Row
     {
+        public required Trip Trip;
         public required CheckBox On;
-        public required TextBox Date, Time, Text;
-        public required TextBlock Week;
     }
 
     public TripImportWindow(AppConfig cfg, Func<DateTime> today)
@@ -112,7 +111,7 @@ public sealed class TripImportWindow : Window
         bar.Children.Add(_go); bar.Children.Add(left);
 
         // ---- 结果 ----
-        _resultScroll = new ScrollViewer { Content = _results, MaxHeight = 300, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        _resultScroll = new ScrollViewer { Content = _results, MaxHeight = 420, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _remind = new CheckBox { Style = Res<Style>("Toggle"), IsChecked = true, Content = new TextBlock { Text = L.T("提前一天在桌面弹便签提醒"), FontSize = 12, Foreground = B("#666666") }, VerticalAlignment = VerticalAlignment.Center };
         _add = new Button { Style = Res<Style>("BtnG"), Padding = new Thickness(14, 2, 14, 2) };
         _add.Click += (_, _) => AddAll();
@@ -276,51 +275,54 @@ public sealed class TripImportWindow : Window
         }
     }
 
-    void ShowResults(List<TripDraft> items)
+    /// <summary>识别出来的结果：按出行时间排好，每条一张卡片（和日历上一模一样），点“改”在下面展开表单。</summary>
+    void ShowResults(List<Trip> items)
     {
         _rows.Clear(); _results.Children.Clear();
+        items.Sort(TripStore.Order);
         foreach (var it in items) AddRow(it);
         _resultBox.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateAdd();
     }
 
-    void AddRow(TripDraft it)
+    void AddRow(Trip it)
     {
-        TextBox Box(string text, double w) => new() { Style = Res<Style>("WinTextBox"), Text = text, Width = w, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(0, 0, 4, 0) };
-        var row = new Row
+        var row = new Row { Trip = it, On = new CheckBox { IsChecked = true, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 10, 8, 0) } };
+        var cardHost = new ContentControl();
+        var edit = new TextBlock { Text = L.T("改"), Foreground = B(Blue), FontSize = 12, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8, 9, 0, 0) };
+        var formHost = new Border { Visibility = Visibility.Collapsed, Margin = new Thickness(24, 4, 0, 4), Padding = new Thickness(10, 2, 10, 10), Background = B("#FAFBFC"), BorderBrush = B("#E6EAF0"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
+        void ShowCard()
         {
-            On = new CheckBox { IsChecked = true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) },
-            Date = Box(TripStore.Key(it.Day), 86),
-            Week = new TextBlock { Width = 34, FontSize = 11.5, Foreground = B(Mute), VerticalAlignment = VerticalAlignment.Center },
-            Time = Box(it.Time, 48),
-            Text = Box(it.Text, double.NaN),
-        };
-        row.Date.ToolTip = L.T("日期，例如 2026-11-06");
-        row.Time.ToolTip = L.T("时间，例如 07:45；没有就空着");
-        void Check()
-        {
-            bool ok = ParseDay(row.Date.Text) is { } d;
-            row.Date.BorderBrush = ok ? Res<Brush>("WinLine") : B(Red);
-            row.Week.Text = ParseDay(row.Date.Text) is { } dd ? CalText.WeekShort(dd.DayOfWeek) + (dd < _today() ? "!" : "") : "";
-            row.Week.ToolTip = ParseDay(row.Date.Text) is { } d3 && d3 < _today() ? L.T("这天已经过去了") : null;
-            UpdateAdd();
+            var card = TripCard.Card(row.Trip, dark: false, showDate: true);
+            card.Opacity = row.On.IsChecked == true ? 1 : 0.45;
+            // 过去的日子提醒一下（多半是识别错了，或者是下单时间）
+            if (row.Trip.LastDay < _today()) card.ToolTip = L.T("这天已经过去了");
+            cardHost.Content = card;
         }
-        row.Date.TextChanged += (_, _) => Check();
-        row.On.Click += (_, _) => UpdateAdd();
-        row.Text.TextChanged += (_, _) => UpdateAdd();
-        Check();
-        var dp = new DockPanel { Margin = new Thickness(0, 0, 0, 5) };
-        foreach (var c in new FrameworkElement[] { row.On, row.Date, row.Week, row.Time }) { DockPanel.SetDock(c, Dock.Left); dp.Children.Add(c); }
-        row.Text.Margin = new Thickness(0);
-        dp.Children.Add(row.Text);
+        ShowCard();
+        edit.MouseLeftButtonUp += (_, _) =>
+        {
+            if (formHost.Visibility == Visibility.Visible) { formHost.Visibility = Visibility.Collapsed; edit.Text = L.T("改"); return; }
+            var form = new TripForm(row.Trip, showDate: true);
+            form.Changed += () => { if (form.DateOk) { row.Trip = form.Value; ShowCard(); UpdateAdd(); } };
+            form.Submit += () => { formHost.Visibility = Visibility.Collapsed; edit.Text = L.T("改"); };
+            formHost.Child = form;
+            formHost.Visibility = Visibility.Visible;
+            edit.Text = L.T("收起");
+            form.FocusFirst();
+        };
+        row.On.Click += (_, _) => { ShowCard(); UpdateAdd(); };
+
+        var dp = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        DockPanel.SetDock(row.On, Dock.Left); DockPanel.SetDock(edit, Dock.Right);
+        dp.Children.Add(row.On); dp.Children.Add(edit); dp.Children.Add(cardHost);
+        var sp = new StackPanel();
+        sp.Children.Add(dp); sp.Children.Add(formHost);
         _rows.Add(row);
-        _results.Children.Add(dp);
+        _results.Children.Add(sp);
     }
 
-    static DateTime? ParseDay(string s) =>
-        DateTime.TryParseExact(s.Trim(), new[] { "yyyy-MM-dd", "yyyy-M-d", "yyyy/M/d", "yyyy.M.d" }, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d : null;
-
-    IEnumerable<Row> Picked() => _rows.Where(r => r.On.IsChecked == true && ParseDay(r.Date.Text) != null && r.Text.Text.Trim().Length > 0);
+    IEnumerable<Row> Picked() => _rows.Where(r => r.On.IsChecked == true && !r.Trip.IsEmpty);
 
     void UpdateAdd()
     {
@@ -331,12 +333,13 @@ public sealed class TripImportWindow : Window
 
     void AddAll()
     {
-        var items = Picked().Select(r => (ParseDay(r.Date.Text)!.Value, Trip.NormTime(r.Time.Text), r.Text.Text.Trim(), _remind.IsChecked == true)).ToList();
+        var items = Picked().Select(r => { var t = r.Trip.Clone(); t.Remind = _remind.IsChecked == true; return t; }).ToList();
         if (items.Count == 0) return;
         TripStore.AddMany(items);
-        Added?.Invoke(items.Min(i => i.Item1));
+        Added?.Invoke(items.Min(i => i.Day));
         Close();
     }
+
 
     // ================= 摆放 =================
     /// <summary>放在 owner 旁边（右边放不下就放左边），上沿和 owner 对齐。</summary>
@@ -357,6 +360,6 @@ public sealed class TripImportWindow : Window
 
     // ================= 测试用 =================
     internal void TestText(string s) { AppendText(s.Replace("\\n", "\n")); UpdateGo(); }
-    internal string TestStatus => _status.Text + " | " + string.Join(" / ", _rows.Select(r => $"{(r.On.IsChecked == true ? "" : "-")}{r.Date.Text} {r.Time.Text} {r.Text.Text}".Replace("  ", " ")));
+    internal string TestStatus => _status.Text + " | " + string.Join(" / ", _rows.Select(r => $"{(r.On.IsChecked == true ? "" : "-")}{r.Trip.Date} [{r.Trip.Kind}] {r.Trip.Display}"));
     internal void TestAdd() => AddAll();
 }
