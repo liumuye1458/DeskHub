@@ -24,10 +24,47 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- 最右边的“收起”小按钮：窄一些 -->
+    <Style x:Key="FoldBtn" TargetType="Button" BasedOn="{StaticResource DockBtn}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="Transparent" CornerRadius="5" Width="24" Height="52">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#33FFFFFF"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Background" Value="#4DFFFFFF"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
 
-  <Border x:Name="Root" Background="{StaticResource FenceBg}" BorderBrush="{StaticResource FenceBorder}" BorderThickness="1" CornerRadius="6" Padding="4" Margin="2"
-          ToolTip="按住空白处可以拖动">
-    <StackPanel x:Name="Buttons" Orientation="Horizontal"/>
-  </Border>
+  <Grid>
+    <Border x:Name="Root" Background="{StaticResource FenceBg}" BorderBrush="{StaticResource FenceBorder}" BorderThickness="1" CornerRadius="6" Padding="2,4,4,4" Margin="2"
+            ToolTip="按住任意地方拖动；点最右边的箭头收到屏幕边上">
+      <DockPanel>
+        <!-- 左边的拖动把手（整条按住拖都行，这里只是让人一眼看出能拖） -->
+        <Border x:Name="Grip" DockPanel.Dock="Left" Width="12" Background="Transparent" Cursor="SizeAll" Margin="0,0,2,0">
+          <Path Data="M0,0 h1.6 v1.6 h-1.6 Z M4,0 h1.6 v1.6 h-1.6 Z M0,4.5 h1.6 v1.6 h-1.6 Z M4,4.5 h1.6 v1.6 h-1.6 Z M0,9 h1.6 v1.6 h-1.6 Z M4,9 h1.6 v1.6 h-1.6 Z M0,13.5 h1.6 v1.6 h-1.6 Z M4,13.5 h1.6 v1.6 h-1.6 Z"
+                Fill="White" Opacity="0.55" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <Button x:Name="FoldBtn" DockPanel.Dock="Right" Style="{StaticResource FoldBtn}" ToolTip="收到屏幕边上（点边上的小把手再拿出来）" Margin="2,0,0,0">
+          <Path x:Name="FoldGlyph" Data="M2,0 L7,5 L2,10" Stroke="White" StrokeThickness="1.6" Opacity="0.85"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+        </Button>
+        <Border DockPanel.Dock="Right" Width="1" Margin="2,10" Background="{StaticResource FenceLine}"/>
+        <StackPanel x:Name="Buttons" Orientation="Horizontal"/>
+      </DockPanel>
+    </Border>
+
+    <!-- 收起后贴在屏幕边上的小把手：点一下展开，按住上下拖可以挪位置 -->
+    <Border x:Name="Tab" Visibility="Collapsed" Width="18" Height="64" Background="{StaticResource FenceBg}" BorderBrush="{StaticResource FenceBorder}"
+            BorderThickness="1,1,0,1" CornerRadius="8,0,0,8" Cursor="Hand" ToolTip="展开工具条 · 按住上下拖可以挪位置">
+      <Path x:Name="TabGlyph" Data="M6,0 L1,5 L6,10" Stroke="White" StrokeThickness="1.8" Opacity="0.9" HorizontalAlignment="Center" VerticalAlignment="Center"
+            StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+    </Border>
+  </Grid>
 </Window>

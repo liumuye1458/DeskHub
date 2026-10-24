@@ -687,5 +687,8 @@
  "一周从哪天开始": "La semana empieza el",
  "周一": "Lunes",
  "周日": "Domingo",
- "点一下打开日历 · 按住拖动可以挪位置": "Haz clic para abrir el calendario · Arrastra para mover"
+ "点一下打开日历 · 按住拖动可以挪位置": "Haz clic para abrir el calendario · Arrastra para mover",
+ "按住任意地方拖动；点最右边的箭头收到屏幕边上": "Arrastra desde cualquier punto; pulsa la flecha de la derecha para guardarla en el borde",
+ "收到屏幕边上（点边上的小把手再拿出来）": "Guardar en el borde (pulsa la pestaña para recuperarla)",
+ "展开工具条 · 按住上下拖可以挪位置": "Mostrar la barra · Arrastra arriba o abajo para moverla"
 }

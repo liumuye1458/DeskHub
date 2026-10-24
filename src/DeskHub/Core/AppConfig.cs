@@ -100,6 +100,13 @@ public sealed class AppConfig
     public bool CalIndonesia { get; set; } = true;
     public bool CalMondayFirst { get; set; } = true;
 
+    // 工具条收到屏幕边上
+    public bool DockCollapsed { get; set; }
+    /// <summary>收在右边（false = 左边）。</summary>
+    public bool DockRight { get; set; } = true;
+    /// <summary>收起后小把手的上沿（-1 = 跟着工具条原来的高度）。</summary>
+    public double DockTabTop { get; set; } = -1;
+
     public List<TopicRule> Topics { get; set; } = DefaultTopics();
     /// <summary>当前显示器组合下的布局（就是 Layouts[LayoutSig].Items 那一份）。</summary>
     public Dictionary<string, FenceLayout> Layout { get; set; } = new();

@@ -316,6 +316,17 @@ public partial class App : Application
                         report.Add($"search {parts[1]}: 已索引 {qr?.Indexed} 命中 {qr?.Counts.GetValueOrDefault("all")}");
                         if (qr != null) report.AddRange(qr.Items.Select(h => "  " + h.Path));
                         break;
+                    case "dock": // dock fold / expand / drag x y / state：工具条收起、展开、拖动（报告位置）
+                        {
+                            var dk = _tools!.Dock!;
+                            var da = string.Join(" ", parts.Skip(1)).Split(' ');
+                            if (da[0] == "fold") dk.Collapse();
+                            else if (da[0] == "expand") dk.Expand();
+                            else if (da[0] == "drag") dk.TestDragTo(double.Parse(da[1]), double.Parse(da[2]));
+                            await Task.Delay(100);
+                            report.Add($"dock {string.Join(" ", da)} → collapsed={dk.Collapsed} right={dk.RightSide} pos={dk.Left:0},{dk.Top:0} size={dk.ActualWidth:0}x{dk.ActualHeight:0} cfg={_ctl!.Cfg.DockCollapsed}/{_ctl.Cfg.DockRight}/{_ctl.Cfg.DockTabTop:0} wa={SystemParameters.WorkArea}");
+                        }
+                        break;
                     case "tool": // tool search|calc|dock 文件 [输入]：打开小工具并画成图片
                         Window tw = parts[1] switch
                         {

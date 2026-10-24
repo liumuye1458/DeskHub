@@ -66,8 +66,10 @@ public sealed class ToolHub : IDisposable
         _dock.Add(L.T("排列"), "M2,2 H8.5 V8.5 H2 Z M11.5,2 H18 V8.5 H11.5 Z M2,11.5 H8.5 V18 H2 Z M11.5,11.5 H18 V18 H11.5 Z", L.T("排列桌面：点一下对齐你现在的摆法，再点一下（或双击）按推荐方案重排"), () => Arrange());
         _dock.Add(L.T("设置"), "M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z M10,2.5 V4.7 M10,15.3 V17.5 M2.5,10 H4.7 M15.3,10 H17.5 M4.7,4.7 L6.3,6.3 M13.7,13.7 L15.3,15.3 M4.7,15.3 L6.3,13.7 M13.7,6.3 L15.3,4.7", L.T("设置"), () => _c.OpenSettings("general"));
         _dock.Moved += () => _c.SaveWindowPos("dock", _dock);
+        _dock.StateChanged += SaveDockState;
         _dock.Show();
         if (!_c.RestoreWindowPos("dock", _dock)) DockDefault();
+        if (_c.Cfg.DockCollapsed) _dock.RestoreCollapsed(new Point(_dock.Left, _dock.Top), _c.Cfg.DockRight, _c.Cfg.DockTabTop);
 
         // 备忘录：贴在屏幕上的指引便签。每 30 秒看一次：定时的到点出现、过了凌晨 5 点每天的重新出现
         Core.GuideStore.Load();
@@ -353,6 +355,24 @@ public sealed class ToolHub : IDisposable
     /// <summary>贴在桌面上的窗口（资源管理器重启后要重新贴）。</summary>
     public IEnumerable<Window> DesktopWindows() => _guides.Values.Where(g => !g.IsTopmostNote).Cast<Window>().Prepend(_dock!).Where(w => w != null);
 
+    void SaveDockState()
+    {
+        if (_dock == null) return;
+        _c.Cfg.DockCollapsed = _dock.Collapsed;
+        _c.Cfg.DockRight = _dock.RightSide;
+        _c.Cfg.DockTabTop = _dock.Collapsed ? _dock.Top : -1;
+        _c.Cfg.Save();
+    }
+
+    /// <summary>挪工具条前先展开（位置按展开的样子算），挪完再收回去。</summary>
+    void WithDockExpanded(Action move)
+    {
+        bool fold = _dock?.Collapsed == true;
+        if (fold) _dock!.Expand(notify: false);
+        move();
+        if (fold) _dock!.Collapse();
+    }
+
     void DockDefault()
     {
         if (_dock == null) return;
@@ -370,19 +390,23 @@ public sealed class ToolHub : IDisposable
     }
 
     /// <summary>恢复默认布局时一起归位。</summary>
-    public void DefaultPositions() { DockDefault(); CalcDefault(); }
+    public void DefaultPositions()
+    {
+        if (_dock?.Collapsed == true) { _dock.Expand(notify: false); SaveDockState(); }
+        DockDefault(); CalcDefault();
+    }
 
     /// <summary>换了一套布局（换显示器组合）：工具条、计算器、便签按这套布局摆，没有记录的放默认位置。</summary>
     public void Relayout()
     {
-        if (_dock != null && !_c.RestoreWindowPos("dock", _dock)) DockDefault();
+        WithDockExpanded(() => { if (_dock != null && !_c.RestoreWindowPos("dock", _dock)) DockDefault(); });
         if (_calc != null && !_c.RestoreWindowPos("calc", _calc)) CalcDefault();
     }
 
     /// <summary>屏幕变了（拔掉外接屏等），跑到屏幕外的挪回来。</summary>
     public void EnsureOnScreen(Func<Rect, bool> onScreen)
     {
-        if (_dock != null && !onScreen(new Rect(_dock.Left, _dock.Top, _dock.ActualWidth, 50))) { _c.Cfg.Layout.Remove("dock"); DockDefault(); }
+        WithDockExpanded(() => { if (_dock != null && !onScreen(new Rect(_dock.Left, _dock.Top, _dock.ActualWidth, 50))) { _c.Cfg.Layout.Remove("dock"); DockDefault(); } });
         if (_calc != null && !onScreen(new Rect(_calc.Left, _calc.Top, _calc.ActualWidth, 50))) { _c.Cfg.Layout.Remove("calc"); CalcDefault(); }
     }
 

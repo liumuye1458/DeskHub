@@ -868,7 +868,7 @@ public sealed class DeskController : IFenceHost
     }
 
     /// <summary>窗口所在那块屏幕的工作区（设备无关像素）。</summary>
-    static Rect WorkAreaOf(Window w)
+    internal static Rect WorkAreaOf(Window w)
     {
         var src = PresentationSource.FromVisual(w);
         if (src?.CompositionTarget == null) return SystemParameters.WorkArea;

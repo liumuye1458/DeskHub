@@ -687,5 +687,8 @@
  "一周从哪天开始": "Tuần bắt đầu từ",
  "周一": "Thứ Hai",
  "周日": "Chủ nhật",
- "点一下打开日历 · 按住拖动可以挪位置": "Bấm để mở lịch · Kéo để di chuyển"
+ "点一下打开日历 · 按住拖动可以挪位置": "Bấm để mở lịch · Kéo để di chuyển",
+ "按住任意地方拖动；点最右边的箭头收到屏幕边上": "Kéo ở bất kỳ đâu; bấm mũi tên bên phải để thu vào cạnh màn hình",
+ "收到屏幕边上（点边上的小把手再拿出来）": "Thu vào cạnh màn hình (bấm tay nắm nhỏ để mở lại)",
+ "展开工具条 · 按住上下拖可以挪位置": "Hiện thanh công cụ · Kéo lên xuống để di chuyển"
 }
