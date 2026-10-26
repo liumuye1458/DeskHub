@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -43,6 +44,18 @@ static class Program
     {
         bool Has(string a) => args.Contains(a, StringComparer.OrdinalIgnoreCase);
         string? Arg(string a) { var i = Array.FindIndex(args, x => x.Equals(a, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+
+        // 装在 Program Files 这类要管理员权限的位置时，由 RunElevated 拉起的那一份：只管复制 / 删除文件
+        if (Arg("--elevated") is { } what && Arg("--dir") is { } edir)
+        {
+            try
+            {
+                if (what == "install") { CloseRunning(); CopyFiles(edir); }
+                else RemoveFiles(edir, selfDelete: true);
+                return 0;
+            }
+            catch (Exception ex) { try { if (Arg("--err") is { } ef) File.WriteAllText(ef, ex.Message); } catch { } return 1; }
+        }
 
         if (Has("--silent"))
         {
@@ -98,25 +111,11 @@ static class Program
         if (o.Register) RemoveOldName(o.Dir);
 
         step(T("正在复制文件…", "Copying files…"));
-        Directory.CreateDirectory(o.Dir);
-        using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip") ?? throw new InvalidOperationException("payload missing"))
-        using (var zip = new ZipArchive(s, ZipArchiveMode.Read))
-        {
-            foreach (var e in zip.Entries)
-            {
-                var dest = Path.GetFullPath(Path.Combine(o.Dir, e.FullName));
-                if (!dest.StartsWith(Path.GetFullPath(o.Dir), StringComparison.OrdinalIgnoreCase)) continue;
-                if (e.FullName.EndsWith('/')) { Directory.CreateDirectory(dest); continue; }
-                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                Retry(() => e.ExtractToFile(dest, true));
-            }
-        }
-        // 卸载程序 = 安装程序自己的一份拷贝
-        var uninst = Path.Combine(o.Dir, "uninstall.exe");
-        if (!string.Equals(Environment.ProcessPath, uninst, StringComparison.OrdinalIgnoreCase))
-            Retry(() => File.Copy(Environment.ProcessPath!, uninst, true));
+        if (CanWrite(o.Dir)) CopyFiles(o.Dir);
+        else { step(T("这个位置要管理员权限，请在 Windows 弹出的窗口里点“是”…", "This location needs admin rights — click Yes in the Windows prompt…")); RunElevated("install", o.Dir); }
 
         var exe = Path.Combine(o.Dir, Exe);
+        var uninst = Path.Combine(o.Dir, "uninstall.exe");
         step(T("正在创建快捷方式…", "Creating shortcuts…"));
         if (o.StartMenu) Shortcut(StartMenuLnk, exe, o.Dir);
         if (o.Desktop) Shortcut(DesktopLnk, exe, o.Dir);
@@ -144,9 +143,74 @@ static class Program
         if (o.Launch)
         {
             step(T("正在启动…", "Starting…"));
-            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = o.Dir });
+            // 安装程序被“以管理员身份运行”时，直接启动的主程序也带管理员权限，
+            // Windows 就不让它和资源管理器、任务栏互相拖放了：交给资源管理器按普通权限启动
+            if (IsElevated) Process.Start(new ProcessStartInfo("explorer.exe", $"\"{exe}\"") { UseShellExecute = false });
+            else Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = o.Dir });
         }
         step(T("安装完成", "Done"));
+    }
+
+    static void CopyFiles(string dir)
+    {
+        Directory.CreateDirectory(dir);
+        using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip") ?? throw new InvalidOperationException("payload missing"))
+        using (var zip = new ZipArchive(s, ZipArchiveMode.Read))
+        {
+            foreach (var e in zip.Entries)
+            {
+                var dest = Path.GetFullPath(Path.Combine(dir, e.FullName));
+                if (!dest.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;
+                if (e.FullName.EndsWith('/')) { Directory.CreateDirectory(dest); continue; }
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                Retry(() => e.ExtractToFile(dest, true));
+            }
+        }
+        // 卸载程序 = 安装程序自己的一份拷贝
+        var uninst = Path.Combine(dir, "uninstall.exe");
+        if (!string.Equals(Environment.ProcessPath, uninst, StringComparison.OrdinalIgnoreCase))
+            Retry(() => File.Copy(Environment.ProcessPath!, uninst, true));
+    }
+
+    static bool IsElevated
+    {
+        get { using var id = WindowsIdentity.GetCurrent(); return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator); }
+    }
+
+    /// <summary>当前权限能不能在这个目录（或它最近的已存在上级）里写文件。Program Files 之类的普通用户写不了。</summary>
+    public static bool CanWrite(string dir)
+    {
+        try
+        {
+            var d = Path.GetFullPath(dir);
+            while (!Directory.Exists(d)) { d = Path.GetDirectoryName(d); if (d == null) return true; }
+            using (File.Create(Path.Combine(d, ".nbd_" + Guid.NewGuid().ToString("N")), 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return false; }
+        catch { return true; }
+    }
+
+    /// <summary>
+    /// 以管理员身份再起一份自己，只做文件的复制 / 删除（Windows 会弹一次确认）。
+    /// 快捷方式、注册表、启动主程序仍由当前这份按普通权限做，免得主程序带着管理员权限跑。
+    /// </summary>
+    static void RunElevated(string what, string dir)
+    {
+        var err = Path.Combine(Path.GetTempPath(), "nbd_setup_" + Guid.NewGuid().ToString("N") + ".txt");
+        var psi = new ProcessStartInfo(Environment.ProcessPath!, $"--elevated {what} --dir \"{dir.TrimEnd('\\')}\" --err \"{err}\"") { UseShellExecute = true, Verb = "runas" };
+        Process p;
+        try { p = Process.Start(psi)!; }
+        catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == 1223)
+        {
+            throw new InvalidOperationException(T($"没有拿到管理员权限，写不进 {dir}。可以再点一次并在弹窗里点“是”，或点“更改…”换个位置。",
+                                                  $"Admin rights were not granted, so {dir} can't be written. Try again and click Yes, or choose another location."));
+        }
+        p.WaitForExit();
+        if (p.ExitCode == 0) return;
+        string m = "";
+        try { m = File.ReadAllText(err); File.Delete(err); } catch { }
+        throw new InvalidOperationException(m != "" ? m : T("管理员权限下的复制没有成功。", "Copying with admin rights failed."));
     }
 
     /// <summary>
@@ -181,14 +245,20 @@ static class Program
         if (deleteData) { step(T("正在删除数据…", "Removing data…")); try { Directory.Delete(DataDir, true); } catch { } }
 
         step(T("正在删除程序文件…", "Removing files…"));
+        if (CanWrite(dir)) RemoveFiles(dir, selfDelete);
+        else RunElevated("uninstall", dir);
+        step(T("卸载完成", "Uninstalled"));
+    }
+
+    static void RemoveFiles(string dir, bool selfDelete)
+    {
         var self = Environment.ProcessPath!;
         foreach (var f in Directory.Exists(dir) ? Directory.GetFiles(dir, "*", SearchOption.AllDirectories) : Array.Empty<string>())
             if (!string.Equals(f, self, StringComparison.OrdinalIgnoreCase)) try { File.Delete(f); } catch { }
-        // 自己正在运行，删不掉：退出后由命令行把整个目录删掉
+        // 自己正在运行，删不掉：由命令行每秒试一次，等卸载窗口关掉（最多 5 分钟）再把整个目录删掉
         if (selfDelete && self.StartsWith(dir, StringComparison.OrdinalIgnoreCase))
-            Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"{dir}\"") { CreateNoWindow = true, UseShellExecute = false });
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/c for /l %i in (1,1,300) do (ping 127.0.0.1 -n 2 > nul & rmdir /s /q \"{dir}\" 2> nul & if not exist \"{dir}\" exit)") { CreateNoWindow = true, UseShellExecute = false });
         else try { Directory.Delete(dir, true); } catch { }
-        step(T("卸载完成", "Uninstalled"));
     }
 
     /// <summary>先请正在运行的主程序自己退出（会恢复系统桌面图标、保存状态），10 秒没退再强制结束。</summary>
@@ -313,7 +383,13 @@ sealed class InstallWindow : Window
         _form.Children.Add(new TextBlock { Text = Program.T("安装位置", "Install location"), Foreground = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)), Margin = new Thickness(0, 0, 0, 6) });
         _form.Children.Add(dirRow);
         _form.Children.Add(_desk); _form.Children.Add(_auto); _form.Children.Add(_run);
-        _form.Children.Add(new TextBlock { Text = Program.T("装在当前用户下，不需要管理员权限；不联网。", "Installs for the current user only, no admin rights needed, no internet."), Foreground = Program.Gray, FontSize = 12, Margin = new Thickness(0, 14, 0, 0), TextWrapping = TextWrapping.Wrap });
+        var note = new TextBlock { Foreground = Program.Gray, FontSize = 12, Margin = new Thickness(0, 14, 0, 0), TextWrapping = TextWrapping.Wrap };
+        void Note() => note.Text = Program.CanWrite(_dir.Text.Trim())
+            ? Program.T("装在当前用户下，不需要管理员权限；不联网。", "Installs for the current user only, no admin rights needed, no internet.")
+            : Program.T("这个位置要管理员权限：开始后 Windows 会弹窗确认一次。不联网。", "This location needs admin rights: Windows will ask once. No internet.");
+        Note();
+        _dir.TextChanged += (_, _) => Note();
+        _form.Children.Add(note);
 
         _cancel = Program.Btn(Program.T("取消", "Cancel"), false);
         _ok = Program.Btn(old == null ? Program.T("安装", "Install") : Program.T("更新", "Update"), true);
@@ -375,9 +451,18 @@ sealed class UninstallWindow : Window
             bool del = data.IsChecked == true;
             if (del && MessageBox.Show(this, Program.T("密码箱里的密码也会一起删除，确定吗？", "Passwords in the vault will be deleted too. Continue?"), Title, MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
             ok.IsEnabled = cancel.IsEnabled = data.IsEnabled = false;
-            await Task.Run(() => Program.Uninstall(dir, del, close: true, selfDelete: true, s => Dispatcher.Invoke(() => status.Text = s)));
-            status.Text = Program.T("已卸载。", "Uninstalled.");
-            ok.Content = Program.T("关闭", "Close"); ok.IsEnabled = true; done = true;
+            try
+            {
+                await Task.Run(() => Program.Uninstall(dir, del, close: true, selfDelete: true, s => Dispatcher.Invoke(() => status.Text = s)));
+                status.Text = Program.T("已卸载。", "Uninstalled.");
+                ok.Content = Program.T("关闭", "Close"); ok.IsEnabled = true; done = true;
+            }
+            catch (Exception ex)
+            {
+                status.Text = Program.T("卸载没有完成：", "Uninstall incomplete: ") + ex.Message;
+                status.Foreground = Brushes.IndianRed;
+                ok.IsEnabled = cancel.IsEnabled = data.IsEnabled = true;
+            }
         };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
         buttons.Children.Add(cancel); buttons.Children.Add(ok);
