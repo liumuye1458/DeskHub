@@ -840,5 +840,7 @@
  "等": "etc.",
  "纯色背景": "Color sólido",
  "调底色深浅…": "Ajustar intensidad del fondo…",
- "透明": "Transparente"
+ "透明": "Transparente",
+ "固定到任务栏…": "Anclar a la barra de tareas…",
+ "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows solo deja que el Explorador de archivos ancle por ti. Arrastra este icono a la barra de tareas y suéltalo: quedará anclado."
 }

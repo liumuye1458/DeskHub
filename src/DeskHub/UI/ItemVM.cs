@@ -30,6 +30,10 @@ public sealed class ItemVM : INotifyPropertyChanged
     bool _selected;
     public bool Selected { get => _selected; set { _selected = value; PropertyChanged?.Invoke(this, new(nameof(Selected))); } }
 
+    // 拖着东西停在它上面、它能接收（文件夹、回收站、程序）：亮起来，和桌面一样
+    bool _dropHover;
+    public bool DropHover { get => _dropHover; set { if (_dropHover == value) return; _dropHover = value; PropertyChanged?.Invoke(this, new(nameof(DropHover))); } }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     static string BuildTip(DesktopItem it)

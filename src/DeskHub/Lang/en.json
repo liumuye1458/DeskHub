@@ -840,5 +840,7 @@
  "等": "etc.",
  "纯色背景": "Solid color",
  "调底色深浅…": "Adjust background depth…",
- "透明": "Clear"
+ "透明": "Clear",
+ "固定到任务栏…": "Pin to taskbar…",
+ "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows only lets File Explorer pin for you. Just drag this icon onto the taskbar and let go — it's pinned."
 }

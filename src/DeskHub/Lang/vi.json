@@ -840,5 +840,7 @@
  "等": "v.v.",
  "纯色背景": "Màu trơn",
  "调底色深浅…": "Chỉnh độ đậm nền…",
- "透明": "Trong"
+ "透明": "Trong",
+ "固定到任务栏…": "Ghim vào thanh tác vụ…",
+ "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows chỉ cho File Explorer ghim thay bạn. Chỉ cần kéo biểu tượng này lên thanh tác vụ rồi thả — là đã ghim."
 }

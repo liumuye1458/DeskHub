@@ -87,14 +87,12 @@ public partial class SearchWindow : Window
         };
         List.PreviewMouseMove += (_, e) =>
         {
-            // 拖出去：可以直接拖进微信、浏览器上传框、资源管理器
+            // 拖出去：可以直接拖进微信、浏览器上传框、资源管理器，也能拖到任务栏、开始菜单固定
             if (_down is not { } p0 || e.LeftButton != MouseButtonState.Pressed || _sel < 0) return;
             var p = e.GetPosition(this);
             if (Math.Abs(p.X - p0.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y - p0.Y) < SystemParameters.MinimumVerticalDragDistance) return;
             _down = null;
-            var data = new DataObject();
-            data.SetFileDropList(new System.Collections.Specialized.StringCollection { _rows[_sel].Path });
-            DragDrop.DoDragDrop(List, data, DragDropEffects.Copy | DragDropEffects.Link | DragDropEffects.Move);
+            Interop.ShellDrag.Start(this, new[] { _rows[_sel].Path }, null);
         };
         List.PreviewMouseLeftButtonUp += (_, _) => _down = null;
         List.PreviewMouseRightButtonUp += (_, e) =>

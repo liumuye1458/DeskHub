@@ -1015,6 +1015,11 @@ public sealed class DeskController : IFenceHost
         {
             own.Add(new(L.T("打开所在位置"), () => ShellMenu.Reveal(item.Path)));
             own.Add(new(L.T("重命名"), () => Rename(fence, item)));
+            // Windows 只给资源管理器自己显示“固定到任务栏”，别的程序拿到的原生菜单里没有这一项，也没有接口能代为固定；
+            // 拖到任务栏是系统认可的办法，在这里告诉使用者
+            var ext = Path.GetExtension(item.Path);
+            if (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+                own.Add(new(L.T("固定到任务栏…"), () => Notify?.Invoke(L.T("Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。"))));
         }
         bool flows = !item.IsDir && !item.IsShortcut && !item.IsSystem;
         if (flows)
@@ -1053,6 +1058,9 @@ public sealed class DeskController : IFenceHost
         m.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         m.IsOpen = true;
     }
+
+    public void RenameItem(FenceWindow fence, DesktopItem item) => Rename(fence, item);
+    public string DesktopDir => _src.UserDesktop;
 
     void Rename(FenceWindow fence, DesktopItem item)
     {

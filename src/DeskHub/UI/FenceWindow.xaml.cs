@@ -23,6 +23,9 @@ public interface IFenceHost
     void LayoutChanged(FenceWindow fence);
     void FooterClicked();
     void DeleteItems(IReadOnlyList<DesktopItem> items);
+    void RenameItem(FenceWindow fence, DesktopItem item);
+    /// <summary>使用者自己的桌面文件夹（拖来的网页图片、邮件附件等交给它接收）。</summary>
+    string DesktopDir { get; }
     /// <summary>这个分区里开始选东西了：别的分区的选中清掉（和桌面一样，同一时间只有一处有选中）。</summary>
     void SelectionStarted(FenceWindow fence);
     Rect SnapRect(FenceWindow fence, Rect r, bool resize);
@@ -31,8 +34,6 @@ public interface IFenceHost
 public partial class FenceWindow : Window
 {
     public const string AllTab = "全部";
-    const string InternalFormat = "DeskHub.Item";
-    const string FromFormat = "DeskHub.From";
     const double IconSize = 42; // 和 FenceWindow.xaml 里图标的宽高一致
 
     public string Key { get; }
@@ -106,7 +107,9 @@ public partial class FenceWindow : Window
             if (Hit<TabVM>(e.OriginalSource) is { } c) { _chip = c.Name; Render(); }
         };
 
+        DragEnter += OnDragEnter;
         DragOver += OnDragOver;
+        DragLeave += OnDragLeave;
         Drop += OnDrop;
     }
 
@@ -314,14 +317,8 @@ public partial class FenceWindow : Window
         _dragStart = null; _pendingOnly = null;
         var items = SelectedItems;
         if (items.Count == 0) return;
-        // 同时带上"文件"格式：可以直接拖进微信、企业微信、浏览器上传框、资源管理器
-        var data = new DataObject();
-        var files = new System.Collections.Specialized.StringCollection();
-        foreach (var it in items) if (!it.IsSystem) files.Add(it.Path);
-        if (files.Count > 0) data.SetFileDropList(files);
-        data.SetData(InternalFormat, string.Join("\n", items.Select(i => i.Path)));
-        data.SetData(FromFormat, Key);
-        DragDrop.DoDragDrop(Items, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+        // 用 Windows 自己的数据：拖到任务栏/开始菜单固定、拖进资源管理器、微信、浏览器上传框，和从真桌面拖出去一样
+        ShellDrag.Start(this, items.Select(i => i.Path).ToList(), Key);
     }
 
     void OnUp(object sender, MouseButtonEventArgs? e)
@@ -385,11 +382,29 @@ public partial class FenceWindow : Window
             return;
         }
         if (e.Key == System.Windows.Input.Key.Escape) { ClearSelection(); return; }
+        bool ctrlOnly = Keyboard.Modifiers == ModifierKeys.Control;
+        // Ctrl+V：把剪贴板上的文件放到桌面（剪切来的就移过来），和在桌面上粘贴一样
+        if (ctrlOnly && e.Key == System.Windows.Input.Key.V)
+        {
+            if (ShellDrag.FromClipboard() is { } clip)
+            {
+                _host.DropFiles(clip.Files, this, ShowTabs && CurrentTab != AllTab ? CurrentTab : null, !clip.Cut, clip.Cut);
+                if (clip.Cut) ShellDrag.ClearClipboard();
+            }
+            e.Handled = true;
+            return;
+        }
         var sel = SelectedItems;
         if (sel.Count == 0) return;
         if (e.Key == System.Windows.Input.Key.Enter) { foreach (var it in sel.Take(20)) _host.OpenItem(it); }
         else if (e.Key == System.Windows.Input.Key.Delete) _host.DeleteItems(sel);
         else if (e.Key == System.Windows.Input.Key.Apps) _host.ShowItemMenu(this, sel);
+        else if (e.Key == System.Windows.Input.Key.F2 && sel.Count == 1) _host.RenameItem(this, sel[0]);
+        // Ctrl+C / Ctrl+X：可以粘贴到资源管理器、微信、邮件等任何地方
+        else if (ctrlOnly && e.Key is System.Windows.Input.Key.C or System.Windows.Input.Key.X)
+            ShellDrag.ToClipboard(sel.Where(i => e.Key == System.Windows.Input.Key.C || !i.IsSystem).Select(i => i.Path).ToList(), cut: e.Key == System.Windows.Input.Key.X);
+        else return;
+        e.Handled = true;
     }
 
     // ---------------- 拖进来 ----------------
@@ -413,13 +428,87 @@ public partial class FenceWindow : Window
         return null;
     }
 
+    // 拖着东西停在某个图标上：它如果能接收（文件夹、回收站、程序、快捷方式），就交给它的系统处理程序
+    ItemVM? _dropOn;
+    ShellDrag.ItemTarget? _dropTarget;
+    readonly ShellDrag.ImageHelper _dragImage = new();
+
+    static System.Runtime.InteropServices.ComTypes.IDataObject? Com(DragEventArgs e) => e.Data as System.Runtime.InteropServices.ComTypes.IDataObject;
+
+    string? _targetKey; // 现在交给谁接收：哪个图标 + 是否交给桌面文件夹（变了才重新找）
+
+    void LeaveItem(bool dropped = false)
+    {
+        if (_dropTarget != null && !dropped) _dropTarget.Leave();
+        _dropTarget = null;
+        _targetKey = null;
+        if (_dropOn != null) _dropOn.DropHover = false;
+        _dropOn = null;
+    }
+
+    /// <summary>
+    /// 找这次该交给谁接收：
+    ///  1. 停在能接收的图标上（文件夹、回收站、程序、快捷方式、压缩包）→ 交给它；
+    ///  2. 拖来的不是磁盘上的文件（网页图片、邮件附件、压缩包里的文件、网址……）→ 交给桌面文件夹，和拖到真桌面一样存下来；
+    ///  3. 否则照旧由分区自己处理（换分区、放进桌面）。
+    /// </summary>
+    void TrackItem(DragEventArgs e)
+    {
+        var over = Hit<ItemVM>(e.OriginalSource);
+        if (over != null && ShellDrag.Active?.Paths.Contains(over.Item.Path) == true) over = null; // 拖的就是它自己
+        bool other = ShellDrag.Active == null && !e.Data.GetDataPresent(DataFormats.FileDrop);
+        var key = (over?.Item.Path ?? "") + "|" + other;
+        if (key == _targetKey) return;
+        LeaveItem();
+        _targetKey = key;
+        if (Com(e) is not { } data) return;
+        bool Use(ShellDrag.ItemTarget? t)
+        {
+            if (t == null) return false;
+            if (t.Enter(data, (int)e.KeyStates, (int)e.AllowedEffects) == 0) { t.Leave(); return false; }
+            _dropTarget = t;
+            return true;
+        }
+        // 不把分区当系统对话框（文件冲突、确认）的父窗口：分区永远压在最底层，对话框跟着它会被别的程序挡住
+        if (over != null && Use(ShellDrag.ItemTarget.For(IntPtr.Zero, over.Item.Path))) { _dropOn = over; over.DropHover = true; return; }
+        if (other) Use(ShellDrag.ItemTarget.For(IntPtr.Zero, _host.DesktopDir));
+    }
+
+    bool _leaving;
+
+    void OnDragEnter(object sender, DragEventArgs e)
+    {
+        _leaving = false;
+        if (Com(e) is { } data) _dragImage.Enter(this, data, (int)e.AllowedEffects);
+    }
+
+    void OnDragLeave(object sender, DragEventArgs e)
+    {
+        // 在窗口里从一个元素移到另一个元素也会触发，紧接着就是 DragEnter/DragOver；
+        // 等这一轮处理完还没有新的，才是真的离开了（拖出窗口、按 Esc 取消）
+        _leaving = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+        {
+            if (!_leaving) return;
+            _leaving = false;
+            LeaveItem();
+            _dragImage.Leave();
+        });
+    }
+
     void OnDragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(InternalFormat))
+        _leaving = false;
+        TrackItem(e);
+        if (_dropTarget != null)
         {
-            // 拖到别的分区：换分区；在"进行中"里拖到某个事项标签：换事项
-            bool otherFence = e.Data.GetData(FromFormat) as string != Key;
-            e.Effects = otherFence || DropTopic(e) != null ? DragDropEffects.Move : DragDropEffects.None;
+            var eff = _dropTarget.Over((int)e.KeyStates, (int)e.AllowedEffects);
+            e.Effects = (DragDropEffects)eff;
+        }
+        else if (ShellDrag.Active is { } drag)
+        {
+            // 从分区里拖来的：拖到别的分区换分区；在"进行中"里拖到某个事项标签：换事项
+            e.Effects = drag.From != Key || DropTopic(e) != null ? DragDropEffects.Move : DragDropEffects.None;
         }
         else if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -427,17 +516,33 @@ public partial class FenceWindow : Window
             e.Effects = ctrl ? DragDropEffects.Copy : DragDropEffects.Move;
         }
         else e.Effects = DragDropEffects.None;
+        _dragImage.Over((int)e.Effects);
         e.Handled = true;
     }
 
     void OnDrop(object sender, DragEventArgs e)
     {
-        var topic = DropTopic(e);
-        if (e.Data.GetData(InternalFormat) is string joined)
+        var data = Com(e);
+        if (_dropTarget != null && data != null)
         {
-            var items = joined.Split('\n').Select(p => _all.FirstOrDefault(i => i.Path == p) ?? (_host as DeskController)?.Find(p)).OfType<DesktopItem>().ToList();
+            // 放进文件夹 / 扔进回收站 / 用这个程序打开：由 Windows 自己完成（冲突、确认对话框也是系统的）
+            _dragImage.Drop(data, (int)e.Effects);
+            var t = _dropTarget;
+            LeaveItem(dropped: true);
+            e.Effects = (DragDropEffects)t.Drop(data, (int)e.KeyStates, (int)e.AllowedEffects);
+            e.Handled = true;
+            return;
+        }
+        LeaveItem();
+        if (data != null) _dragImage.Drop(data, (int)e.Effects);
+        var topic = DropTopic(e);
+        if (ShellDrag.Active is { } drag)
+        {
+            e.Effects = DragDropEffects.None; // 只是换分区，文件没动：别让拖出方以为被“移走”了
+            e.Handled = true;
+            var items = drag.Paths.Select(p => _all.FirstOrDefault(i => i.Path == p) ?? (_host as DeskController)?.Find(p)).OfType<DesktopItem>().ToList();
             if (items.Count == 0) return;
-            bool same = e.Data.GetData(FromFormat) as string == Key;
+            bool same = drag.From == Key;
             if (items.Count > 1) { if (!same || topic != null) _host.PlaceItems(items, this, topic, same); return; }
             if (!same) _host.PlaceItem(items[0], this, topic);
             else if (topic != null) _host.MoveToTopic(items[0], topic, this);

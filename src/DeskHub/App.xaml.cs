@@ -360,6 +360,46 @@ public partial class App : Application
                         var df = Windows.OfType<FenceWindow>().First(f => f.Key == parts[2] || f.TitleText.Text == parts[2]);
                         _ctl!.DropFiles(new[] { parts[1] }, df, null, false, false);
                         break;
+                    case "shell": // shell fmt 路径 / dropon 目标路径|源路径 / clip 路径|copy或cut：测试和系统一致的拖拽、剪贴板
+                        {
+                            var arg = parts.Length > 2 ? parts[2] : "";
+                            switch (parts[1])
+                            {
+                                case "fmt":
+                                    {
+                                        var d = Interop.ShellDrag.Make(arg.Split('|'));
+                                        report.Add("shell fmt → " + (d == null ? "null" : string.Join(", ", Interop.ShellDrag.Formats(d))));
+                                    }
+                                    break;
+                                case "dropon":
+                                    {
+                                        var f = arg.Split('|');
+                                        var hw = new System.Windows.Interop.WindowInteropHelper(Windows.OfType<FenceWindow>().First()).Handle;
+                                        var t = Interop.ShellDrag.ItemTarget.For(hw, f[0]);
+                                        if (t == null) { report.Add("shell dropon → 不是可接收的图标"); break; }
+                                        var d = Interop.ShellDrag.Make(new[] { f[1] })!;
+                                        int all = Interop.ShellDrag.Copy | Interop.ShellDrag.Move | Interop.ShellDrag.Link;
+                                        int enter = t.Enter(d, 1, all);
+                                        int done = t.Drop(d, 0, enter);
+                                        await Task.Delay(1500);
+                                        report.Add($"shell dropon → enter={enter} drop={done} 源还在={File.Exists(f[1]) || Directory.Exists(f[1])} 目标里有={File.Exists(Path.Combine(f[0], Path.GetFileName(f[1])))}");
+                                    }
+                                    break;
+                                case "menu":
+                                    report.Add("shell menu → " + string.Join(" / ", Interop.ShellMenu.TestItems(arg)));
+                                    break;
+                                case "clip":
+                                    {
+                                        var f = arg.Split('|');
+                                        bool ok = Interop.ShellDrag.ToClipboard(f[0].Split(';'), f[1] == "cut");
+                                        var back = Interop.ShellDrag.FromClipboard();
+                                        report.Add($"shell clip → set={ok} files={(back == null ? "null" : string.Join(";", back.Value.Files))} cut={back?.Cut}");
+                                        Interop.ShellDrag.ClearClipboard();
+                                    }
+                                    break;
+                            }
+                        }
+                        break;
                     case "placet": // placet 桌面文件名 分区名（按标题找分区）
                         var pt = _ctl!.Find(Path.Combine(sandbox, "Desktop", parts[1]));
                         if (pt == null) { report.Add($"找不到 {parts[1]}"); break; }

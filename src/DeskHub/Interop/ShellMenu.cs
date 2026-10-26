@@ -152,6 +152,45 @@ static class ShellMenu
         }
     }
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetMenuString(IntPtr m, uint item, System.Text.StringBuilder s, int max, uint flags);
+    [DllImport("user32.dll")] static extern uint GetMenuItemID(IntPtr m, int pos);
+
+    /// <summary>调试用：原生菜单里有哪些项（文字和命令名）。</summary>
+    public static List<string> TestItems(string path)
+    {
+        var list = new List<string>();
+        if (Native.SHParseDisplayName(path, IntPtr.Zero, out var pidl, 0, out _) != 0) return list;
+        IntPtr parentPtr = IntPtr.Zero, cmPtr = IntPtr.Zero, menu = Native.CreatePopupMenu();
+        try
+        {
+            Native.SHBindToParent(pidl, typeof(IShellFolder).GUID, out parentPtr, out _);
+            var parent = (IShellFolder)Marshal.GetObjectForIUnknown(parentPtr);
+            parent.GetUIObjectOf(IntPtr.Zero, 1, new[] { ILFindLastID(pidl) }, typeof(IContextMenu).GUID, IntPtr.Zero, out cmPtr);
+            var cm = (IContextMenu)Marshal.GetObjectForIUnknown(cmPtr);
+            cm.QueryContextMenu(menu, 0, ShellFirst, ShellLast, CMF_NORMAL | CMF_EXPLORE);
+            var sb = new System.Text.StringBuilder(256);
+            var verb = Marshal.AllocHGlobal(512);
+            for (int i = 0; i < Native.GetMenuItemCount(menu); i++)
+            {
+                sb.Clear(); GetMenuString(menu, (uint)i, sb, 256, Native.MF_BYPOSITION);
+                var id = GetMenuItemID(menu, i);
+                string v = "";
+                if (id is >= ShellFirst and <= ShellLast && cm.GetCommandString((UIntPtr)(id - ShellFirst), 4 /*GCS_VERBW*/, IntPtr.Zero, verb, 256) == 0) v = Marshal.PtrToStringUni(verb) ?? "";
+                if (sb.Length > 0) list.Add($"{sb} [{v}]");
+            }
+            Marshal.FreeHGlobal(verb);
+        }
+        catch (Exception ex) { list.Add("错误 " + ex.Message); }
+        finally
+        {
+            Native.DestroyMenu(menu);
+            if (cmPtr != IntPtr.Zero) Marshal.Release(cmPtr);
+            if (parentPtr != IntPtr.Zero) Marshal.Release(parentPtr);
+            Native.CoTaskMemFree(pidl);
+        }
+        return list;
+    }
+
     static void AddOwn(IntPtr menu, ref uint pos, ref uint id, Own? o, Dictionary<uint, Action> actions)
     {
         if (o == null) { Native.InsertMenu(menu, pos++, Native.MF_BYPOSITION | Native.MF_SEPARATOR, UIntPtr.Zero, null); return; }

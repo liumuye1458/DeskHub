@@ -40,6 +40,9 @@
         <DataTrigger Binding="{Binding Selected}" Value="True">
           <Setter TargetName="cell" Property="Background" Value="{StaticResource ItemSelected}"/>
         </DataTrigger>
+        <DataTrigger Binding="{Binding DropHover}" Value="True">
+          <Setter TargetName="cell" Property="Background" Value="{StaticResource ItemSelected}"/>
+        </DataTrigger>
         <DataTrigger Binding="{Binding Faded}" Value="True">
           <Setter TargetName="cell" Property="Opacity" Value="0.55"/>
         </DataTrigger>
