@@ -108,8 +108,6 @@ static class Program
     {
         if (o.Close) { step(T("正在关闭正在运行的 New B Desk…", "Closing running New B Desk…")); CloseRunning(); }
 
-        if (o.Register) RemoveOldName(o.Dir);
-
         step(T("正在复制文件…", "Copying files…"));
         if (CanWrite(o.Dir)) CopyFiles(o.Dir);
         else { step(T("这个位置要管理员权限，请在 Windows 弹出的窗口里点“是”…", "This location needs admin rights — click Yes in the Windows prompt…")); RunElevated("install", o.Dir); }
@@ -211,22 +209,6 @@ static class Program
         string m = "";
         try { m = File.ReadAllText(err); File.Delete(err); } catch { }
         throw new InvalidOperationException(m != "" ? m : T("管理员权限下的复制没有成功。", "Copying with admin rights failed."));
-    }
-
-    /// <summary>
-    /// 0.6.x 以前产品叫 HOTA DESK：装过的话，把旧的快捷方式、卸载项、程序目录清掉（用户数据目录是同一个，不动）。
-    /// </summary>
-    static void RemoveOldName(string newDir)
-    {
-        const string old = "HOTA DESK";
-        var oldKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + old;
-        string? oldDir = null;
-        try { using var k = Registry.CurrentUser.OpenSubKey(oldKey); oldDir = k?.GetValue("InstallLocation") as string; } catch { }
-        foreach (var l in new[] { Environment.SpecialFolder.Programs, Environment.SpecialFolder.DesktopDirectory })
-            try { var f = Path.Combine(Environment.GetFolderPath(l), old + ".lnk"); if (File.Exists(f)) File.Delete(f); } catch { }
-        try { Registry.CurrentUser.DeleteSubKeyTree(oldKey, false); } catch { }
-        if (oldDir != null && Directory.Exists(oldDir) && !string.Equals(Path.GetFullPath(oldDir).TrimEnd('\\'), Path.GetFullPath(newDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-            try { Directory.Delete(oldDir, true); } catch { }
     }
 
     // ================= 卸载 =================
