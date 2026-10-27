@@ -69,6 +69,8 @@ public partial class App : Application
         for (int i = 0; i < e.Args.Length - 1; i++) if (e.Args[i] == "--lang") lang = e.Args[i + 1];
         L.Init(lang ?? AppConfig.PeekLanguage());
         L.HookWindows();
+        // 专用版 HOTA DESK 开着时不能同时开（都会接管桌面、抢快捷键）：问用户要不要关掉它
+        if (sandbox == null && !Core.OtherEdition.MakeWay()) { Shutdown(); return; }
 
         var cfg = AppConfig.Load();
         if (sandbox != null) UI.BgLook.FakeWallpaper = "sandbox-wallpaper-A.jpg|1"; // 沙盒不读真实壁纸
@@ -655,6 +657,13 @@ public partial class App : Application
                         break;
                     case "nav": // 设置窗口切换分页
                         if (_settings != null) ((System.Windows.Controls.RadioButton)_settings.FindName(parts[1])).IsChecked = true;
+                        break;
+                    case "edition": // edition 测试名：假装“测试名”是另一个版本，走一遍关掉它的流程（不弹窗）
+                        {
+                            var t0 = System.Diagnostics.Stopwatch.StartNew();
+                            var ok = Core.OtherEdition.MakeWay($@"Local\{parts[1]}.Single", $@"Local\{parts[1]}.Exit", null, ask: false);
+                            report.Add($"edition {parts[1]} → {(ok ? "start" : "blocked")} {t0.Elapsed.TotalSeconds:0.0}s");
+                        }
                         break;
                     case "quit":File.WriteAllLines(Path.Combine(sandbox, "report.txt"), report.Concat(_notes)); Quit(); return;
                 }

@@ -842,5 +842,7 @@
  "调底色深浅…": "Atur kepekatan latar…",
  "透明": "Bening",
  "固定到任务栏…": "Sematkan ke taskbar…",
- "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows hanya mengizinkan File Explorer menyematkan untuk Anda. Seret saja ikon ini ke taskbar lalu lepaskan — langsung tersemat."
+ "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows hanya mengizinkan File Explorer menyematkan untuk Anda. Seret saja ikon ini ke taskbar lalu lepaskan — langsung tersemat.",
+ "{0} 正在运行。两个版本都会接管桌面，不能同时开着。\n\n要关掉 {0}、改开 {1} 吗？": "{0} sedang berjalan. Kedua edisi mengambil alih desktop, jadi tidak bisa dibuka bersamaan.\n\nTutup {0} dan buka {1}?",
+ "没能关掉 {0}。请在它的托盘图标上点“退出（恢复系统桌面）”，再打开 {1}。": "Gagal menutup {0}. Klik ikon baki-nya, pilih \"Keluar (pulihkan desktop sistem)\", lalu buka {1} lagi."
 }

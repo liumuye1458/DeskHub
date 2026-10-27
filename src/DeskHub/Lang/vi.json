@@ -842,5 +842,7 @@
  "调底色深浅…": "Chỉnh độ đậm nền…",
  "透明": "Trong",
  "固定到任务栏…": "Ghim vào thanh tác vụ…",
- "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows chỉ cho File Explorer ghim thay bạn. Chỉ cần kéo biểu tượng này lên thanh tác vụ rồi thả — là đã ghim."
+ "Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。": "Windows chỉ cho File Explorer ghim thay bạn. Chỉ cần kéo biểu tượng này lên thanh tác vụ rồi thả — là đã ghim.",
+ "{0} 正在运行。两个版本都会接管桌面，不能同时开着。\n\n要关掉 {0}、改开 {1} 吗？": "{0} đang chạy. Cả hai phiên bản đều quản lý màn hình nền nên không thể mở cùng lúc.\n\nĐóng {0} và mở {1}?",
+ "没能关掉 {0}。请在它的托盘图标上点“退出（恢复系统桌面）”，再打开 {1}。": "Không đóng được {0}. Bấm vào biểu tượng khay của nó, chọn \"Thoát (khôi phục màn hình nền hệ thống)\", rồi mở lại {1}."
 }
