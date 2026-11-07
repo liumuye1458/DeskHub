@@ -64,7 +64,7 @@
 
       <!-- 标题栏：按住拖动整个分区。不画分隔线，靠留白分开（和 Windows 11 的卡片一样） -->
       <Border x:Name="Header" Grid.Row="0" Background="#01000000" Cursor="SizeAll">
-        <DockPanel Margin="14,0,6,0">
+        <DockPanel x:Name="HeaderPanel" Margin="14,0,6,0">
           <Button x:Name="MenuBtn" DockPanel.Dock="Right" Width="28" Height="28" Cursor="Hand" ToolTip="分区菜单" Focusable="False">
             <Button.Template>
               <ControlTemplate TargetType="Button">
@@ -78,10 +78,40 @@
             </Button.Template>
           </Button>
           <TextBlock x:Name="HintText" DockPanel.Dock="Right" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,4,0" TextTrimming="CharacterEllipsis"/>
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBlock x:Name="TitleText" FontSize="13.5" FontWeight="SemiBold" Effect="{StaticResource TextShadowSoft}"/>
-            <TextBlock x:Name="CountText" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" Margin="7,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,1"/>
-          </StackPanel>
+          <Grid>
+            <StackPanel x:Name="TitlePanel" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="TitleText" FontSize="13.5" FontWeight="SemiBold" Effect="{StaticResource TextShadowSoft}"/>
+              <TextBlock x:Name="CountText" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" Margin="7,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,1"/>
+            </StackPanel>
+            <!-- 多标签盒子：标题换成一排标签（点一下 / 滚轮切换，按住拖动整个盒子） -->
+            <ItemsControl x:Name="GroupTabs" VerticalAlignment="Center" Visibility="Collapsed" ClipToBounds="True">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border x:Name="t" CornerRadius="13" Height="26" Padding="10,0,10,1" Margin="0,0,2,0" Background="Transparent" AllowDrop="True" Tag="{Binding Tag}" ToolTip="{Binding Tip}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock x:Name="n" Text="{Binding Name}" FontSize="13" Foreground="{StaticResource TextSub}" Effect="{StaticResource TextShadowSoft}"/>
+                      <TextBlock x:Name="c" Text="{Binding Count}" FontSize="11.5" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" Margin="5,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,1"/>
+                    </StackPanel>
+                  </Border>
+                  <DataTemplate.Triggers>
+                    <Trigger SourceName="t" Property="IsMouseOver" Value="True">
+                      <Setter TargetName="t" Property="Background" Value="{StaticResource SoftHover}"/>
+                      <Setter TargetName="n" Property="Foreground" Value="White"/>
+                    </Trigger>
+                    <DataTrigger Binding="{Binding On}" Value="True">
+                      <Setter TargetName="t" Property="Background" Value="{StaticResource SoftOn}"/>
+                      <Setter TargetName="n" Property="Foreground" Value="White"/>
+                      <Setter TargetName="n" Property="FontWeight" Value="SemiBold"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DropHover}" Value="True">
+                      <Setter TargetName="t" Property="Background" Value="#6607C255"/>
+                    </DataTrigger>
+                  </DataTemplate.Triggers>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
         </DockPanel>
       </Border>
 

@@ -258,6 +258,53 @@ public static class Arranger
         }
     }
 
+    // ======================= 两翼留白 / 一个大盒子 =======================
+    /// <summary>
+    /// 两翼留白（方案 B）：左边一列放 Group 0（时钟、软件和文件夹的盒子），右边一列放 Group 1、2（日历、今天/进行中/冷却区的盒子），
+    /// 中间整块留给壁纸。每块高度按内容走（不铺满整屏，免得一大片空玻璃），两列左右贴屏幕边、上边对齐。
+    /// oneBox（方案 C）：右边只有日历 + 一个大盒子，盒子一直铺到底。
+    /// 日历宽度跟着这一列走，边线对齐。便签不动。
+    /// </summary>
+    public static void Wings(List<Block> bs, Rect wa, Rect avoid, double gap, double scale, bool oneBox)
+    {
+        gap = Px(gap, scale);
+        double m = Px(MarginOf(gap), scale);
+        double chrome = bs.Where(b => b.Fit).Select(b => b.ChromeW).DefaultIfEmpty(10).Max() + 4;
+        bool wide = wa.Width >= 1900; // 2K 以上的屏多给一列图标
+        int leftN = wide ? 4 : 3, rightN = oneBox ? (wide ? 6 : 5) : (wide ? 5 : 4);
+        double lw = Px(chrome + leftN * CellW, scale), rw = Px(chrome + rightN * CellW, scale);
+        Column(bs.Where(b => b.Group == 0).ToList(), wa.Left + m, lw, false);
+        Column(bs.Where(b => b.Group is 1 or 2).ToList(), wa.Right - m - rw, rw, oneBox);
+
+        void Column(List<Block> list, double x, double w, bool fill)
+        {
+            double top = wa.Top + m, bottom = wa.Bottom - m;
+            // 工具条压在这一列下面：整列停在工具条上面
+            if (!avoid.IsEmpty && avoid.Left < x + w && avoid.Right > x && avoid.Top < bottom) bottom = avoid.Top - gap;
+            double y = top;
+            for (int j = 0; j < list.Count; j++)
+            {
+                var b = list[j];
+                double rest = list.Skip(j + 1).Sum(o => (o.Fit ? MinH(o) : o.R.Height) + gap); // 给下面的块留够地方
+                double room = Math.Max(0, bottom - y - rest);
+                double h;
+                if (!b.Fit)
+                {
+                    h = b.R.Height;
+                    double bw = b.Key == "calendar" ? w : b.R.Width; // 日历和这一列一样宽，时钟保持原样
+                    b.R = Round(new Rect(x, y, bw, h), scale);
+                }
+                else
+                {
+                    h = fill && j == list.Count - 1 ? room : Math.Min(Need(b, w), room);
+                    h = Math.Max(h, Math.Min(MinH(b), room));
+                    b.R = Round(new Rect(x, y, w, h), scale);
+                }
+                y += h + gap;
+            }
+        }
+    }
+
     // ======================= 拖动 / 拉大小时的吸附 =======================
     /// <summary>
     /// 拖动时：左边吸到别人的左边或"别人右边 + 缝"，右边吸到别人的右边或"别人左边 - 缝"，上下同理；也吸屏幕留边。

@@ -33,6 +33,15 @@ public sealed class WallLook
     public DateTime Used { get; set; } = DateTime.Now;
 }
 
+/// <summary>多标签盒子：几个分区合成一块，标题栏变成一排标签，同一时间只显示一个（位置大小共用）。</summary>
+public sealed class FenceGroup
+{
+    /// <summary>成员分区的键，按标签顺序。</summary>
+    public List<string> Keys { get; set; } = new();
+    /// <summary>现在显示的是哪个。</summary>
+    public string Active { get; set; } = "";
+}
+
 public sealed class FenceLayout
 {
     public double X { get; set; }
@@ -146,6 +155,10 @@ public sealed class AppConfig
     public Dictionary<string, LayoutProfile> Layouts { get; set; } = new();
     public string LayoutSig { get; set; } = "";
     public List<CustomFence> CustomFences { get; set; } = new();
+    /// <summary>多标签盒子（不分显示器组合，所有布局共用）。</summary>
+    public List<FenceGroup> Groups { get; set; } = new();
+    /// <summary>选的摆法：A 铺满三列，B 两翼留白，C 一个大盒子。没选过 = null（老用户，按 A 算）。</summary>
+    public string? Scheme { get; set; }
     /// <summary>用户存起来的布局（布局 → 保存当前布局）。</summary>
     public List<SavedLayout> SavedLayouts { get; set; } = new();
     /// <summary>快捷键：shot / search / calc → "Ctrl+Alt+A" / "Ctrl Ctrl" / ""(不设)。没写的用默认值。</summary>

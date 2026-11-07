@@ -133,6 +133,7 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(L.T("新建分区…"), null, (_, _) => _ctl!.NewFence());
         menu.Items.Add(L.T("排列桌面"), null, (_, _) => _tools!.Arrange(1));
+        menu.Items.Add(L.T("换个摆法…"), null, (_, _) => _ctl!.PickScheme());
         menu.Items.Add(L.T("设置…"), null, (_, _) => OpenSettings("rules"));
         menu.Items.Add(L.T("立即检查归档"), null, (_, _) => _ctl!.CheckArchive(userAsked: true));
         menu.Items.Add(L.T("归档记录 / 撤回…"), null, (_, _) => OpenSettings("flow"));
@@ -698,6 +699,35 @@ public partial class App : Application
                         _tools!.Arrange(parts.Length > 1 && int.TryParse(parts[1], out var stp) ? stp : null);
                         await Task.Delay(200);
                         report.Add("layout: " + string.Join("  ", _ctl!.CaptureLayout().Select(kv => $"{kv.Key}=({kv.Value.X:0.#},{kv.Value.Y:0.#},{kv.Value.Right:0.#},{kv.Value.Bottom:0.#})")));
+                        break;
+                    case "scheme": // scheme A|B|C：换摆法（不弹选择窗口）
+                        _ctl!.ApplyScheme(parts[1]);
+                        await Task.Delay(300);
+                        report.Add("groups: " + _ctl.TestGroups());
+                        report.Add("layout: " + string.Join("  ", _ctl.CaptureLayout().Select(kv => $"{kv.Key}=({kv.Value.X:0.#},{kv.Value.Y:0.#},{kv.Value.Width:0.#}x{kv.Value.Height:0.#})")));
+                        break;
+                    case "firstlayout": // 模拟全新安装第一次启动
+                        _ctl!.TestFirstLayout();
+                        await Task.Delay(300);
+                        report.Add("groups: " + _ctl.TestGroups());
+                        break;
+                    case "tab": // tab 分区key：切到盒子里的这个标签
+                        _ctl!.ShowTab(parts[1]);
+                        await Task.Delay(200);
+                        report.Add("groups: " + _ctl.TestGroups());
+                        break;
+                    case "merge": // merge a b：把 a 并进 b 所在的盒子
+                        _ctl!.Merge(_ctl.FenceByKey(parts[1])!, _ctl.FenceByKey(parts[2].Trim())!);
+                        await Task.Delay(200);
+                        report.Add("groups: " + _ctl.TestGroups());
+                        break;
+                    case "split": // split key：从盒子里拆出来
+                        _ctl!.Split(_ctl.FenceByKey(parts[1])!);
+                        await Task.Delay(200);
+                        report.Add("groups: " + _ctl.TestGroups());
+                        break;
+                    case "schemeshot": // schemeshot 文件：把“选个摆法”窗口画成图片
+                        UI.SchemeWindow.Render(_ctl!.Cfg.Scheme ?? "A", parts[1]);
                         break;
                     case "newfence": // newfence 名字：直接建一个自定义分区（跳过输入框）
                         _ctl!.NewFenceNamed(parts[1]);

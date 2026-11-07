@@ -12,7 +12,7 @@ using VbUi = Microsoft.VisualBasic.FileIO.UIOption;
 namespace DeskHub;
 
 /// <summary>总控：读桌面 → 分类 → 分发给各分区窗口；处理用户操作；定时检查归档。</summary>
-public sealed class DeskController : IFenceHost
+public sealed partial class DeskController : IFenceHost
 {
     public AppConfig Cfg { get; }
     public StateStore State { get; }
@@ -50,6 +50,8 @@ public sealed class DeskController : IFenceHost
         _archiver = new Archiver(cfg, st);
         _ui = Dispatcher.CurrentDispatcher;
         _firstRun = st.Items.Count == 0;
+        // 全新安装（没有任何记录、没摆过）：启动后按方案 B 两翼留白摆好
+        _freshInstall = _firstRun && cfg.Layout.Count == 0 && cfg.Layouts.Count == 0 && cfg.Scheme == null;
         _src.Changed += () => _ui.BeginInvoke(Refresh);
         _src.Renamed += (a, b) => _ui.BeginInvoke(() => State.Rename(a, b));
         _midnight.Tick += (_, _) => { Refresh(); CheckArchive(); _cal?.GoToday(); ScheduleMidnight(); };
@@ -94,7 +96,8 @@ public sealed class DeskController : IFenceHost
         Make("cold", L.T("冷却区"), "", f => { f.ShowDaysBadge = true; f.Cold = true; f.Sort = x => x.OrderBy(i => i.DaysLeft).ThenBy(i => i.LastTouch); f.EmptyHint = L.T("没有冷却中的文件"); });
         foreach (var cf in Cfg.CustomFences) MakeCustom(cf);
         ApplyTexts();
-        foreach (var f in _fences.Values) f.Show();
+        NormalizeGroups();
+        foreach (var f in _fences.Values) if (!HiddenMember(f.Key)) f.Show(); // 盒子里只显示当前标签那一个
         if (Cfg.CalShow) MakeCalendar(); // 分区摆好以后再放日历，第一次能找空地
 
         if (Cfg.HideSystemIcons && !Sandbox) DesktopHost.HideSystemIcons();
@@ -104,6 +107,7 @@ public sealed class DeskController : IFenceHost
         if (_tidyAfterStart) _ui.BeginInvoke(DispatcherPriority.Background, OnDisplayStable);
         ScheduleMidnight();
         _archiveSoon.Start(); // 开机两分钟后再检查归档，不和开机抢资源
+        if (_freshInstall) _ui.BeginInvoke(DispatcherPriority.ApplicationIdle, FirstLayout);
     }
 
     bool _stopped;
@@ -177,6 +181,7 @@ public sealed class DeskController : IFenceHost
         if (string.IsNullOrWhiteSpace(name)) return;
         cf.Title = name.Trim();
         f.TitleText.Text = cf.Title;
+        RefreshGroupTabs();
         Cfg.Save();
     }
 
@@ -186,6 +191,7 @@ public sealed class DeskController : IFenceHost
         if (cf == null) return;
         if (MessageBox.Show(f, L.F("删除分区“{0}”？\n\n里面的文件不会被删除，会回到原来的分区（软件回常用软件、文件夹回项目文件夹、文件按时间流转）。", cf.Title),
                 L.T("删除分区"), MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        LeaveGroup(f);
         Cfg.CustomFences.Remove(cf);
         Cfg.Layout.Remove(cf.Id);
         foreach (var m in State.Items.Values) if (m.Fence == cf.Id) m.Fence = null;
@@ -210,6 +216,7 @@ public sealed class DeskController : IFenceHost
             : L.T("自动归档已关闭"));
         foreach (var f in _fences.Values) f.Topics = Cfg.Topics;
         if (_clock != null) { _clock.ShowSeconds = Cfg.ShowSeconds; _clock.Note = Cfg.ClockNote; _clock.Tick(); }
+        RefreshGroupTabs();
     }
 
     // ================= 布局 =================
@@ -509,6 +516,7 @@ public sealed class DeskController : IFenceHost
         if (_clock != null) Place(_clock, "clock");
         if (_cal != null) Place(_cal, "calendar");
         Tools?.Relayout();
+        SyncGroups();
         foreach (var f in _fences.Values) f.UpdateLayout();
     }
 
@@ -563,6 +571,7 @@ public sealed class DeskController : IFenceHost
             double top = c.Bottom + Cfg.ArrangeGap;
             Apply(k, f, new Rect(r.X, top, r.Width, Math.Max(140, r.Bottom - top)));
         }
+        SyncGroups();
     }
 
     /// <summary>所有分区、时钟都完整地放在主屏工作区里（比工作区还大的先缩小）。不删你的摆法。</summary>
@@ -575,6 +584,7 @@ public sealed class DeskController : IFenceHost
             double x = Math.Clamp(f.Left, wa.Left, wa.Right - w), y = Math.Clamp(f.Top, wa.Top, wa.Bottom - h);
             if (x != f.Left || y != f.Top || w != f.Width || h != f.Height) Apply(k, f, new Rect(x, y, w, h));
         }
+        SyncGroups();
         if (_clock != null)
         {
             double w = _clock.ActualWidth > 0 ? _clock.ActualWidth : 200, h = _clock.ActualHeight > 0 ? _clock.ActualHeight : 80;
@@ -644,6 +654,7 @@ public sealed class DeskController : IFenceHost
         var before = CaptureSaved(AutoBackupName);
         before.BindSig = Cfg.SavedLayouts.FirstOrDefault(x => x.Name == AutoBackupName)?.BindSig ?? "";
         ApplySavedCore(s, out var tidy);
+        SyncGroups();
         if (tidy) TidyQuiet(); else ClearClock();
         EnsureOnScreen();
         Touch();
@@ -713,6 +724,8 @@ public sealed class DeskController : IFenceHost
     {
         Touch();
         Cfg.Layout.Clear();
+        SetGroups(new List<FenceGroup>());
+        Cfg.Scheme = null;
         foreach (var (k, f) in _fences) Place(f, k);
         if (_clock != null) Place(_clock, "clock");
         if (_cal != null) Place(_cal, "calendar");
@@ -739,6 +752,7 @@ public sealed class DeskController : IFenceHost
     {
         foreach (var (k, w) in ArrangeTargets())
             if (saved.TryGetValue(k, out var r)) Apply(k, w, r);
+        SyncGroups();
         if (touch) Touch();
         Cfg.Save();
     }
@@ -756,6 +770,7 @@ public sealed class DeskController : IFenceHost
         if (learnGap) Touch(); // 你点的排列（自动对齐不算）
         var wa = WA;
         var targets = ArrangeTargets();
+        bool wings = Cfg.Scheme is "B" or "C"; // 推荐排版按选的摆法来
         // 先按排列前的样子摆回去，量出每个分区标题栏、标签页占多少地方，再算
         RestoreLayout(from, touch: learnGap);
         // 第二遍：大小变了以后标签页可能换行，重新量一次再算
@@ -770,11 +785,14 @@ public sealed class DeskController : IFenceHost
                 if (w is FenceWindow f)
                 {
                     b.Fit = true;
-                    b.Items = f.ItemCount;
-                    b.ChromeW = f.ChromeW; b.ChromeH = f.ChromeH;
-                    b.MinRows = f.Zone is Zone.Today or Zone.Active or Zone.Cold ? 2 : 1;
-                    b.Group = f.Zone switch { Zone.Apps => 0, Zone.Folders => 0, Zone.Custom => 1, Zone.Active => 1, _ => 2 };
-                    b.Spill = f.Zone == Zone.Custom;
+                    var members = Members(f);
+                    b.Items = members.Max(x => x.ItemCount); // 盒子：按东西最多的那个标签算高度，切标签时不用变大小
+                    b.ChromeW = f.ChromeW; b.ChromeH = members.Max(x => x.ChromeH);
+                    b.MinRows = members.Any(x => x.Zone is Zone.Today or Zone.Active or Zone.Cold) ? 2 : 1;
+                    b.Group = wings
+                        ? (members.Any(x => x.Zone is Zone.Apps or Zone.Folders or Zone.Custom) && !members.Any(x => x.Zone is Zone.Today or Zone.Active or Zone.Cold) ? 0 : 2)
+                        : f.Zone switch { Zone.Apps => 0, Zone.Folders => 0, Zone.Custom => 1, Zone.Active => 1, _ => 2 };
+                    b.Spill = f.Zone == Zone.Custom && !wings;
                 }
                 else b.Group = k == "clock" ? 0 : k == "calendar" ? 2 : 9; // 日历：右列最上面，大小不动
                 blocks.Add(b);
@@ -783,7 +801,8 @@ public sealed class DeskController : IFenceHost
             int Rank(Block b) => b.Key switch { "calendar" => -1, "clock" => 0, "apps" => 1, "today" => 0, "folders" => 9, "active" => 9, "cold" => 9, _ => 2 };
             blocks = blocks.OrderBy(Rank).ThenBy(b => Cfg.CustomFences.FindIndex(c => c.Id == b.Key)).ToList();
             var scale = DpiScale();
-            if (auto) Arranger.Auto(blocks, wa, avoid, Cfg.ArrangeGap, scale);
+            if (auto && wings) Arranger.Wings(blocks, wa, avoid, Cfg.ArrangeGap, scale, oneBox: Cfg.Scheme == "C");
+            else if (auto) Arranger.Auto(blocks, wa, avoid, Cfg.ArrangeGap, scale);
             else
             {
                 // 对齐：缝宽按你现在的摆法学（学到的也用于拖动吸附和推荐排版）
@@ -796,6 +815,7 @@ public sealed class DeskController : IFenceHost
                 Apply(b.Key, w, b.R);
             }
         }
+        SyncGroups();
         Cfg.Save();
     }
 
@@ -839,7 +859,7 @@ public sealed class DeskController : IFenceHost
         Cfg.Save();
     }
 
-    public void LayoutChanged(FenceWindow fence) => SaveLayout(fence.Key, fence);
+    public void LayoutChanged(FenceWindow fence) { SaveLayout(fence.Key, fence); SyncGroup(fence); }
 
     // 工具条、计算器这类小窗口的位置
     public void SaveWindowPos(string key, Window w) => SaveLayout(key, w);
@@ -885,6 +905,7 @@ public sealed class DeskController : IFenceHost
         _fences["cold"].SetItems(items.Where(i => i.Zone == Zone.Cold).ToList());
         foreach (var cf in Cfg.CustomFences)
             if (_fences.TryGetValue(cf.Id, out var f)) f.SetItems(items.Where(i => i.Zone == Zone.Custom && i.Fence == cf.Id).ToList());
+        RefreshGroupTabs();
         _saveSoon.Stop(); _saveSoon.Start();
     }
 
@@ -1039,6 +1060,7 @@ public sealed class DeskController : IFenceHost
         void Add(string text, Action a) { var mi = new System.Windows.Controls.MenuItem { Header = text }; mi.Click += (_, _) => a(); m.Items.Add(mi); }
         Add(L.T("新建分区…"), () => NewFence(fence));
         Add(L.T("底色深浅…"), () => LookPopup.Open(fence.Key, fence.TitleText.Text, fence));
+        AddGroupMenu(m, fence);
         if (fence.Zone == Zone.Custom)
         {
             Add(L.T("分区改名…"), () => RenameFence(fence));
@@ -1051,6 +1073,7 @@ public sealed class DeskController : IFenceHost
         m.Items.Add(new System.Windows.Controls.Separator());
         Add(L.T("排列：对齐现在的摆法"), () => Tools?.Arrange(1));
         Add(L.T("排列：按推荐方案重排"), () => Tools?.Arrange(2));
+        Add(L.T("换个摆法…"), () => PickScheme());
         Add(L.T("布局：保存 / 切换 / 导出 / 导入…"), () => RequestLayouts?.Invoke());
         Add(L.T("恢复默认布局"), ResetLayout);
         Add(L.T("刷新"), Refresh);

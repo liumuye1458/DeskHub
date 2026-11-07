@@ -29,11 +29,37 @@ public interface IFenceHost
     /// <summary>这个分区里开始选东西了：别的分区的选中清掉（和桌面一样，同一时间只有一处有选中）。</summary>
     void SelectionStarted(FenceWindow fence);
     Rect SnapRect(FenceWindow fence, Rect r, bool resize);
+    // ---- 多标签盒子 ----
+    /// <summary>点了盒子上的某个标签（key = 成员分区）。</summary>
+    void GroupTabClicked(FenceWindow fence, string key);
+    /// <summary>标题栏上滚轮：切到前一个 / 后一个标签。</summary>
+    void GroupWheel(FenceWindow fence, int dir);
+    /// <summary>拖着标题栏移动中（cursor = 鼠标位置）：停在别的分区标题栏上时提示“松手合并”。</summary>
+    void MoveHover(FenceWindow fence, Point cursor);
+    /// <summary>拖完松手：落在别的分区标题栏上就合并成盒子，返回 true。</summary>
+    bool MoveDone(FenceWindow fence, Point cursor);
+    /// <summary>按键找分区（拖到盒子标签上时用）。</summary>
+    FenceWindow? FenceByKey(string key);
+}
+
+/// <summary>盒子标题栏上的一个标签。</summary>
+public sealed class GroupTabVM : System.ComponentModel.INotifyPropertyChanged
+{
+    public string Key { get; init; } = "";
+    public string Name { get; init; } = "";
+    public int Count { get; init; }
+    public bool On { get; init; }
+    public string? Tip { get; init; }
+    public string Tag => FenceWindow.GroupTagPrefix + Key;
+    bool _drop;
+    public bool DropHover { get => _drop; set { if (_drop == value) return; _drop = value; PropertyChanged?.Invoke(this, new(nameof(DropHover))); } }
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
 public partial class FenceWindow : Window
 {
     public const string AllTab = "全部";
+    public const string GroupTagPrefix = "grp:";
     const double IconSize = 42; // 和 FenceWindow.xaml 里图标的宽高一致
 
     public string Key { get; }
@@ -59,6 +85,8 @@ public partial class FenceWindow : Window
         {
             if (e.ClickCount != 1 || e.OriginalSource is DependencyObject d && IsInside(d, MenuBtn)) return;
             _moveFrom = Cursor(); _moveStart = new Point(Left, Top);
+            _moved = false;
+            _tabDown = Hit<GroupTabVM>(e.OriginalSource);
             Header.CaptureMouse();
             e.Handled = true;
         };
@@ -66,6 +94,10 @@ public partial class FenceWindow : Window
         {
             if (_moveFrom is not { } from || !Header.IsMouseCaptured) return;
             var c = Cursor();
+            // 在标签上按下又没怎么动：算点标签，不挪窗口
+            if (!_moved && Math.Abs(c.X - from.X) < 4 && Math.Abs(c.Y - from.Y) < 4) return;
+            _moved = true;
+            _host.MoveHover(this, c);
             var raw = new Rect(_moveStart.X + c.X - from.X, _moveStart.Y + c.Y - from.Y, ActualWidth, ActualHeight);
             var r = _host.SnapRect(this, raw, false);
             Left = r.X; Top = r.Y;
@@ -74,9 +106,10 @@ public partial class FenceWindow : Window
         Header.LostMouseCapture += (_, _) => EndMove();
         MenuBtn.Click += (_, _) => _host.ShowFenceMenu(this);
         Header.MouseRightButtonUp += (_, e) => { _host.ShowFenceMenu(this); e.Handled = true; };
-        // 标题栏上 Ctrl+滚轮：调底色深浅
+        // 标题栏上 Ctrl+滚轮：调底色深浅；盒子的标题栏上直接滚：切标签
         Header.PreviewMouseWheel += (_, e) =>
         {
+            if (Keyboard.Modifiers == ModifierKeys.None && InGroup) { _host.GroupWheel(this, e.Delta > 0 ? -1 : 1); e.Handled = true; return; }
             if (Keyboard.Modifiers != ModifierKeys.Control) return;
             LookPopup.Nudge(Key, TitleText.Text, this, e.Delta > 0 ? 1 : -1);
             e.Handled = true;
@@ -492,6 +525,7 @@ public partial class FenceWindow : Window
         {
             if (!_leaving) return;
             _leaving = false;
+            if (GroupTabs.ItemsSource is IEnumerable<GroupTabVM> all) foreach (var t in all) t.DropHover = false;
             LeaveItem();
             _dragImage.Leave();
         });
@@ -500,6 +534,17 @@ public partial class FenceWindow : Window
     void OnDragOver(object sender, DragEventArgs e)
     {
         _leaving = false;
+        if (TabTarget(e, true) is { } tf)
+        {
+            // 停在盒子的另一个标签上：放下就进那个分区
+            LeaveItem();
+            bool fromThere = ShellDrag.Active is { } dd && dd.From == tf.Key;
+            e.Effects = fromThere ? DragDropEffects.None : ShellDrag.Active != null ? DragDropEffects.Move
+                : e.Data.GetDataPresent(DataFormats.FileDrop) ? ((e.KeyStates & DragDropKeyStates.ControlKey) != 0 ? DragDropEffects.Copy : DragDropEffects.Move) : DragDropEffects.None;
+            _dragImage.Over((int)e.Effects);
+            e.Handled = true;
+            return;
+        }
         TrackItem(e);
         if (_dropTarget != null)
         {
@@ -524,6 +569,21 @@ public partial class FenceWindow : Window
     void OnDrop(object sender, DragEventArgs e)
     {
         var data = Com(e);
+        if (TabTarget(e, false) is { } tf)
+        {
+            LeaveItem();
+            if (data != null) _dragImage.Drop(data, (int)e.Effects);
+            e.Handled = true;
+            if (ShellDrag.Active is { } dd)
+            {
+                e.Effects = DragDropEffects.None;
+                var moving = dd.Paths.Select(p => (_host as DeskController)?.Find(p)).OfType<DesktopItem>().ToList();
+                if (moving.Count > 0 && dd.From != tf.Key) _host.PlaceItems(moving, tf, null, false);
+            }
+            else if (e.Data.GetData(DataFormats.FileDrop) is string[] fs)
+                _host.DropFiles(fs, tf, null, (e.KeyStates & DragDropKeyStates.ControlKey) != 0, (e.KeyStates & DragDropKeyStates.ShiftKey) != 0);
+            return;
+        }
         if (_dropTarget != null && data != null)
         {
             // 放进文件夹 / 扔进回收站 / 用这个程序打开：由 Windows 自己完成（冲突、确认对话框也是系统的）
@@ -570,7 +630,51 @@ public partial class FenceWindow : Window
         if (_moveFrom == null) return;
         _moveFrom = null;
         if (Header.IsMouseCaptured) Header.ReleaseMouseCapture();
+        if (!_moved)
+        {
+            // 没拖动：点在盒子标签上就切过去
+            if (_tabDown is { } t && !t.On) _host.GroupTabClicked(this, t.Key);
+            _tabDown = null;
+            return;
+        }
+        _tabDown = null;
+        if (_host.MoveDone(this, Cursor())) return; // 落在别的分区标题栏上：合并了
         _host.LayoutChanged(this);
+    }
+
+    // ---------------- 多标签盒子 ----------------
+    bool _moved;
+    GroupTabVM? _tabDown;
+    public bool InGroup => GroupTabs.Visibility == Visibility.Visible;
+
+    /// <summary>tabs = null：普通分区（显示标题）；否则是盒子的一员，标题栏显示一排标签。</summary>
+    public void SetGroupTabs(IReadOnlyList<GroupTabVM>? tabs)
+    {
+        bool g = tabs != null;
+        GroupTabs.ItemsSource = tabs;
+        GroupTabs.Visibility = g ? Visibility.Visible : Visibility.Collapsed;
+        TitlePanel.Visibility = g ? Visibility.Collapsed : Visibility.Visible;
+        HintText.Visibility = g ? Visibility.Collapsed : Visibility.Visible; // 说明文字放到标签的提示里
+        HeaderPanel.Margin = new Thickness(g ? 6 : 14, 0, 6, 0);
+    }
+
+    /// <summary>别的分区拖到这个分区标题栏上方：亮绿框，提示松手就合并。</summary>
+    public void MergeHint(bool on)
+    {
+        if (on) { Root.BorderBrush = (Brush)FindResource("Green"); Root.BorderThickness = new Thickness(2); }
+        else { Root.BorderThickness = new Thickness(1); Root.BorderBrush = _cold ? DashedBorder() : (Brush)FindResource("FenceBorder"); }
+    }
+
+    /// <summary>标题栏在屏幕上的位置（和 Left / Top 同一套坐标）。</summary>
+    public Rect HeaderRect => new(Left, Top, ActualWidth, Header.ActualHeight + 4);
+
+    /// <summary>拖到盒子的某个标签上：交给那个成员分区。</summary>
+    FenceWindow? TabTarget(DragEventArgs e, bool mark)
+    {
+        var vm = Hit<GroupTabVM>(e.OriginalSource);
+        if (GroupTabs.ItemsSource is IEnumerable<GroupTabVM> all) foreach (var t in all) t.DropHover = mark && t == vm && !t.On;
+        if (vm == null || vm.On) return null;
+        return _host.FenceByKey(vm.Key);
     }
 
     static bool IsInside(DependencyObject d, DependencyObject parent)
