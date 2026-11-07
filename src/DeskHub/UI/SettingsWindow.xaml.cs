@@ -70,6 +70,7 @@ public partial class SettingsWindow : Window
         // 常规
         HideIcons.IsChecked = cfg.HideSystemIcons;
         ShowSeconds.IsChecked = cfg.ShowSeconds;
+        Glass.IsChecked = cfg.Glass ?? Interop.Backdrop.DefaultOn;
         ClockNote.Text = cfg.ClockNote;
         // 语言：第一项"跟随系统"，其余用各自语言的名字显示（不懂当前语言也能找到自己的）
         LangBox.Items.Add(new ComboBoxItem { Content = L.T("跟随系统") + "（" + L.Languages.First(l => l.Code == L.FromSystem()).Name + "）", Tag = "" });
@@ -299,6 +300,8 @@ public partial class SettingsWindow : Window
         cfg.ArchiveRoot = root;
         cfg.AutoArchive = AutoArchive.IsChecked == true;
         cfg.ShowSeconds = ShowSeconds.IsChecked == true;
+        if ((Glass.IsChecked == true) != (cfg.Glass ?? Interop.Backdrop.DefaultOn)) cfg.Glass = Glass.IsChecked == true;
+        Interop.Backdrop.Set(cfg.Glass ?? Interop.Backdrop.DefaultOn ? Interop.Backdrop.Kind.Acrylic : Interop.Backdrop.Kind.None);
         cfg.CalLunar = CalLunar.IsChecked == true;
         cfg.CalChina = CalChina.IsChecked == true;
         cfg.CalIndonesia = CalIndonesia.IsChecked == true;

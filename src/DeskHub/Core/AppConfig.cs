@@ -99,6 +99,8 @@ public sealed class AppConfig
     public bool AutoArchive { get; set; } = true;
     public bool HideSystemIcons { get; set; } = true;
     public bool ShowSeconds { get; set; }
+    /// <summary>分区、日历、工具条用毛玻璃（亚克力）底；null = 没设过，Windows 11 开、Windows 10 关（见 Interop/Backdrop）。</summary>
+    public bool? Glass { get; set; }
     /// <summary>时钟下面自己写的一行字（空 = 不显示）。</summary>
     public string ClockNote { get; set; } = "";
 

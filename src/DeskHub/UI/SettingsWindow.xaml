@@ -124,6 +124,7 @@
           <Button x:Name="LookBtn" Content="调底色深浅…" Style="{StaticResource BtnW}"/>
         </StackPanel>
         <TextBlock Foreground="#999" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Text="分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。"/>
+        <CheckBox x:Name="Glass" Style="{StaticResource Toggle}" Margin="0,10,0,0" Content="毛玻璃底：透出模糊的壁纸（Windows 11 效果最好；电脑比较卡时可以关掉）"/>
 
         <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,24,0,4">日历</TextBlock>
         <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。"/>

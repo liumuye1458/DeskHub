@@ -219,6 +219,7 @@ public sealed class CalendarWidget : Window
         };
 
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
+        Interop.Backdrop.Attach(this, glass => root.CornerRadius = new CornerRadius(glass ? 8 : 6));
         SizeChanged += (_, _) => Relayout();
         KeyDown += OnKey;
         // 截图、文字、图片文件拖到日历上 → 智能识别

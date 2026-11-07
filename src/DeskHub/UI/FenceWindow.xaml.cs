@@ -89,6 +89,7 @@ public partial class FenceWindow : Window
         Grip.DragDelta += OnGrip;
         Grip.DragCompleted += (_, _) => _host.LayoutChanged(this);
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
+        Backdrop.Attach(this, glass => Root.CornerRadius = new CornerRadius(glass ? 8 : 6)); // 和系统圆角对齐，边线不被切
 
         // 点选 / Ctrl、Shift 多选 / 空白处拖框多选 / 拖走选中的
         Scroll.PreviewMouseLeftButtonDown += OnDown;

@@ -39,6 +39,8 @@ public partial class DockWindow : Window
         BgLook.Changed += Look;
         Closed += (_, _) => BgLook.Changed -= Look;
         SourceInitialized += (_, _) => DesktopHost.Pin(this);
+        // 毛玻璃按整个窗口垫：外面留的 2 像素空边会露出一圈模糊，有毛玻璃时去掉
+        Interop.Backdrop.Attach(this, glass => { Root.Margin = new Thickness(glass ? 0 : 2); Root.CornerRadius = new CornerRadius(glass ? 8 : 6); });
 
         // 整条都能拖：按下后挪动超过 4 像素就开始拖，松手时按钮不会被点到
         PreviewMouseLeftButtonDown += (_, e) => { _down = e.GetPosition(this); _dragged = false; };

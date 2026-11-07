@@ -73,6 +73,7 @@ public partial class App : Application
         if (sandbox == null && !Core.OtherEdition.MakeWay()) { Shutdown(); return; }
 
         var cfg = AppConfig.Load();
+        Interop.Backdrop.Set(cfg.Glass ?? Interop.Backdrop.DefaultOn ? Interop.Backdrop.Kind.Acrylic : Interop.Backdrop.Kind.None);
         if (sandbox != null) UI.BgLook.FakeWallpaper = "sandbox-wallpaper-A.jpg|1"; // 沙盒不读真实壁纸
         UI.BgLook.Init(cfg);
         if (sandbox != null && !File.Exists(Path.Combine(AppConfig.DataDir, "config.json")))
@@ -295,6 +296,52 @@ public partial class App : Application
                         break;
                     case "clocknote": // clocknote 截图文件 文字（文字可含空格，空 = 清掉）
                         _ctl!.Cfg.ClockNote = parts.Length > 2 ? parts[2] : ""; _ctl.ApplyTexts(); await Task.Delay(300); RenderWindow(_ctl.Clock!, parts[1]); break;
+                    case "material": // material none|blur|acrylic：桌面块换底子
+                        Interop.Backdrop.Set(Interop.Backdrop.Parse(parts[1]));
+                        break;
+                    case "realshot": // realshot 文件：真实截屏（系统的模糊效果画不进 RenderTargetBitmap）。
+                        // 先铺一层显示壁纸的置顶窗口，再让分区临时浮到它上面，截下分区所在的区域，然后全部还原
+                        {
+                            var desks = Windows.OfType<Window>().Where(w => (w is FenceWindow or DockWindow or CalendarWidget) && w.IsVisible).ToList();
+                            var wa = SystemParameters.WorkArea;
+                            var wallFile = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop", "WallPaper", null) as string;
+                            if (string.IsNullOrEmpty(wallFile) || !File.Exists(wallFile))
+                                wallFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Microsoft\Windows\Themes\TranscodedWallpaper");
+                            var img = new System.Windows.Media.Imaging.BitmapImage();
+                            img.BeginInit(); img.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; img.UriSource = new Uri(wallFile); img.EndInit();
+                            var wall = new Window
+                            {
+                                WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false, ShowActivated = false, Topmost = true,
+                                Left = wa.Left, Top = wa.Top, Width = wa.Width, Height = wa.Height,
+                                Content = new System.Windows.Controls.Image { Source = img, Stretch = System.Windows.Media.Stretch.UniformToFill },
+                            };
+                            Interop.DesktopHost.TestFloat = true;
+                            try
+                            {
+                                wall.Show();
+                                await Task.Delay(300);
+                                foreach (var w in desks)
+                                {
+                                    var h = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+                                    Interop.Native.SetWindowLongPtr(h, Interop.Native.GWLP_HWNDPARENT, IntPtr.Zero);
+                                    w.Topmost = true;
+                                }
+                                await Task.Delay(1200);
+                                var rs = desks.Select(w => { Interop.Native.GetWindowRect(new System.Windows.Interop.WindowInteropHelper(w).Handle, out var r); return r; }).ToList();
+                                int x0 = rs.Min(r => r.Left) - 24, y0 = rs.Min(r => r.Top) - 24, x1 = rs.Max(r => r.Right) + 24, y1 = rs.Max(r => r.Bottom) + 24;
+                                using var bmp = new System.Drawing.Bitmap(x1 - x0, y1 - y0);
+                                using (var g = System.Drawing.Graphics.FromImage(bmp)) g.CopyFromScreen(x0, y0, 0, 0, bmp.Size);
+                                bmp.Save(parts[1], System.Drawing.Imaging.ImageFormat.Png);
+                                report.Add($"realshot {x0},{y0} {x1 - x0}x{y1 - y0} ← {desks.Count} 块，壁纸 {Path.GetFileName(wallFile)}");
+                            }
+                            finally
+                            {
+                                foreach (var w in desks) { w.Topmost = false; Interop.DesktopHost.Repin(w); }
+                                wall.Close();
+                                Interop.DesktopHost.TestFloat = false;
+                            }
+                        }
+                        break;
                     case "winshot": // 把设置窗口画成图片
                         if (_settings is { } sw)
                         {

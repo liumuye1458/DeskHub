@@ -101,6 +101,8 @@ static class DesktopHost
     }
 
     static bool _moving; // 我们自己在排顺序：BottomHook 别插手
+    /// <summary>测试用（沙盒截真实屏幕）：暂时不把分区压回最底层。</summary>
+    internal static bool TestFloat;
 
     static void MoveAfter(IntPtr h, IntPtr after)
     {
@@ -188,7 +190,7 @@ static class DesktopHost
     static void KeepAtBottom()
     {
         _pinned.RemoveWhere(h => !Native.IsWindow(h));
-        if (_pinned.Count == 0) return;
+        if (_pinned.Count == 0 || TestFloat) return;
         var rects = _pinned.Where(Native.IsWindowVisible).Select(h => { Native.GetWindowRect(h, out var r); return r; }).ToList();
         var ours = new List<IntPtr>();
         var lowRects = new List<Native.RECT>();
@@ -278,7 +280,7 @@ static class DesktopHost
     static IntPtr BottomHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == 0x0112 && ((int)wParam & 0xFFF0) == 0xF020) { handled = true; return IntPtr.Zero; } // WM_SYSCOMMAND / SC_MINIMIZE：不理
-        if (msg == Native.WM_WINDOWPOSCHANGING && !_moving)
+        if (msg == Native.WM_WINDOWPOSCHANGING && !_moving && !TestFloat)
         {
             unsafe
             {
