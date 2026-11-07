@@ -13,13 +13,21 @@
       <SolidColorBrush x:Key="Orange" Color="#E6FF992B"/>
       <SolidColorBrush x:Key="FenceBg" Color="#40000000"/>
       <SolidColorBrush x:Key="FenceBgCold" Color="#2E000000"/>
-      <SolidColorBrush x:Key="FenceBorder" Color="#47FFFFFF"/>
+      <SolidColorBrush x:Key="FenceBorder" Color="#38FFFFFF"/>
       <SolidColorBrush x:Key="FenceLine" Color="#1FFFFFFF"/>
+      <!-- 桌面块上的小按钮、页签：悬停 / 选中的白色蒙层 -->
+      <SolidColorBrush x:Key="SoftHover" Color="#1FFFFFFF"/>
+      <SolidColorBrush x:Key="SoftOn" Color="#33FFFFFF"/>
+      <!-- “更多”菜单的三个点 -->
+      <Geometry x:Key="MoreDots">M0,1.4 A1.4,1.4 0 1 1 2.8,1.4 A1.4,1.4 0 1 1 0,1.4 Z M5.6,1.4 A1.4,1.4 0 1 1 8.4,1.4 A1.4,1.4 0 1 1 5.6,1.4 Z M11.2,1.4 A1.4,1.4 0 1 1 14,1.4 A1.4,1.4 0 1 1 11.2,1.4 Z</Geometry>
       <SolidColorBrush x:Key="TextMain" Color="#FFFFFF"/>
       <SolidColorBrush x:Key="TextSub" Color="#CCCCCC"/>
       <SolidColorBrush x:Key="TextDim" Color="#999999"/>
-      <SolidColorBrush x:Key="ItemHover" Color="#2EFFFFFF"/>
-      <SolidColorBrush x:Key="ItemSelected" Color="#47FFFFFF"/>
+      <!-- 桌面块上的次要文字（数量、说明、页脚）：用半透明白而不是灰，浅色壁纸 + 毛玻璃上也看得清 -->
+      <SolidColorBrush x:Key="TextHint" Color="#BFFFFFFF"/>
+      <SolidColorBrush x:Key="ItemHover" Color="#24FFFFFF"/>
+      <SolidColorBrush x:Key="ItemSelected" Color="#3DFFFFFF"/>
+      <SolidColorBrush x:Key="ItemSelectedLine" Color="#66FFFFFF"/>
       <SolidColorBrush x:Key="WinLine" Color="#E8E8E8"/>
       <SolidColorBrush x:Key="WinSoft" Color="#F5F6F7"/>
       <SolidColorBrush x:Key="WinText" Color="#333333"/>
@@ -27,6 +35,8 @@
       <SolidColorBrush x:Key="WinText3" Color="#999999"/>
 
       <DropShadowEffect x:Key="TextShadow" BlurRadius="3" ShadowDepth="1" Opacity="0.85" Color="Black" RenderingBias="Performance"/>
+      <!-- 分区里图标下的文字：底下已经有一层底色，阴影淡一点，字更清爽 -->
+      <DropShadowEffect x:Key="TextShadowSoft" BlurRadius="4" ShadowDepth="0.5" Opacity="0.55" Color="Black" RenderingBias="Performance"/>
 
       <!-- 白底窗口里的按钮 -->
       <Style x:Key="BtnW" TargetType="Button">

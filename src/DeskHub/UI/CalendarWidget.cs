@@ -48,7 +48,7 @@ public sealed class CalendarWidget : Window
     Trip? _hl;       // 鼠标停在右边列表哪一条上：日历上把它那几天框出来
     readonly Dictionary<Trip, Border> _cards = new(); // 放大倍数：_k 格子里的字和标记；_ks 标题栏、星期、行程列表（放得温和些）
 
-    readonly TextBlock _title = new() { FontSize = 13, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock _title = new() { FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _hint = new() { Foreground = Res<Brush>("TextSub"), FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 0, 4, 0) };
     readonly UniformGrid _week = new() { Rows = 1, Columns = 7, Height = WeekH };
     readonly UniformGrid _bg = new() { Rows = 6, Columns = 7 };   // 底色、今天的绿圈、选中、角标（不加阴影）
@@ -76,7 +76,7 @@ public sealed class CalendarWidget : Window
         Width = 300; Height = 290; MinWidth = 210; MinHeight = 190;
 
         // ---- 标题栏：按住拖动；‹ › 翻月；右边提示（今天 / 共几天）；≡ 菜单 ----
-        var menu = new Button { Width = 24, Height = 24, Cursor = Cursors.Hand, Focusable = false, ToolTip = L.T("日历菜单"), Template = MenuBtnTemplate() };
+        var menu = new Button { Width = 26, Height = 26, Cursor = Cursors.Hand, Focusable = false, ToolTip = L.T("日历菜单"), Template = MenuBtnTemplate() };
         menu.Click += (_, _) => ShowMenu(menu);
         var nav = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
         nav.Children.Add(NavBtn("‹", -1, L.T("上个月（PageUp）")));
@@ -97,7 +97,7 @@ public sealed class CalendarWidget : Window
         };
         var head = new Border
         {
-            Height = HeadH, Background = B("#01000000"), BorderBrush = Res<Brush>("FenceLine"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Height = HeadH, Background = B("#01000000"), // 不画分隔线，和分区一样靠留白分开
             Cursor = Cursors.SizeAll, Child = headDock, ToolTip = L.T("按住标题栏拖动 · 右下角拉大小 · 拉宽会显示接下来的行程"),
         };
         head.MouseLeftButtonDown += (_, e) =>
@@ -152,7 +152,7 @@ public sealed class CalendarWidget : Window
         var listHead = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
         DockPanel.SetDock(add, Dock.Right);
         listHead.Children.Add(add);
-        listHead.Children.Add(new TextBlock { Text = L.T("接下来"), FontWeight = FontWeights.Bold, FontSize = 12 });
+        listHead.Children.Add(new TextBlock { Text = L.T("接下来"), FontWeight = FontWeights.SemiBold, FontSize = 12 });
         var listPanel = new DockPanel { Margin = new Thickness(12, 8, 10, 6) };
         DockPanel.SetDock(listHead, Dock.Top);
         listPanel.Children.Add(listHead);
@@ -703,10 +703,10 @@ public sealed class CalendarWidget : Window
     {
         var b = new Border
         {
-            Width = 20, Height = 22, CornerRadius = new CornerRadius(3), Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = tip,
+            Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = tip,
             Child = new TextBlock { Text = glyph, FontSize = 15, Opacity = 0.85, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, -2, 0, 0) },
         };
-        b.MouseEnter += (_, _) => b.Background = Res<Brush>("ItemHover");
+        b.MouseEnter += (_, _) => b.Background = Res<Brush>("SoftOn");
         b.MouseLeave += (_, _) => b.Background = Brushes.Transparent;
         b.MouseLeftButtonDown += (_, e) => { e.Handled = true; Go(step); }; // 不让标题栏把它当成拖动
         return b;
@@ -717,18 +717,17 @@ public sealed class CalendarWidget : Window
         var t = new ControlTemplate(typeof(Button));
         var bd = new FrameworkElementFactory(typeof(Border), "b");
         bd.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(13));
         var p = new FrameworkElementFactory(typeof(Path));
-        p.SetValue(Path.DataProperty, Geometry.Parse("M0,0 H12 M0,4 H12 M0,8 H12"));
-        p.SetValue(Shape.StrokeProperty, Brushes.White);
-        p.SetValue(Shape.StrokeThicknessProperty, 1.3);
-        p.SetValue(OpacityProperty, 0.8);
+        p.SetValue(Path.DataProperty, Res<Geometry>("MoreDots")); // 和分区一样的“⋯”
+        p.SetValue(Shape.FillProperty, Brushes.White);
+        p.SetValue(OpacityProperty, 0.85);
         p.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
         p.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
         bd.AppendChild(p);
         t.VisualTree = bd;
         var hover = new Trigger { Property = IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty, B("#26FFFFFF"), "b"));
+        hover.Setters.Add(new Setter(Border.BackgroundProperty, Res<Brush>("SoftOn"), "b"));
         t.Triggers.Add(hover);
         return t;
     }

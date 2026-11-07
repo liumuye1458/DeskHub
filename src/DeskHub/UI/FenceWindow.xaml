@@ -10,14 +10,14 @@
     <BooleanToVisibilityConverter x:Key="B2V"/>
 
     <DataTemplate x:Key="ItemTpl">
-      <Border x:Name="cell" Width="76" Height="88" CornerRadius="4" Background="Transparent" Margin="0,0,0,2"
+      <Border x:Name="cell" Width="76" Height="88" CornerRadius="6" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" Margin="0,0,0,2"
               ToolTip="{Binding Tip}" ToolTipService.InitialShowDelay="700">
         <Grid>
-          <StackPanel Margin="0,6,0,0">
+          <StackPanel Margin="0,5,0,0">
             <Image Source="{Binding Icon}" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform"/>
-            <TextBlock Text="{Binding Name}" Width="72" MaxHeight="30" Margin="0,5,0,0" TextAlignment="Center"
+            <TextBlock Text="{Binding Name}" Width="70" MaxHeight="30" Margin="0,5,0,0" TextAlignment="Center"
                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis" LineHeight="15" LineStackingStrategy="BlockLineHeight"
-                       Effect="{StaticResource TextShadow}"/>
+                       Effect="{StaticResource TextShadowSoft}"/>
           </StackPanel>
           <Ellipse Width="8" Height="8" Fill="{StaticResource Green}" Stroke="#40000000" StrokeThickness="1"
                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,12,0"
@@ -39,9 +39,11 @@
         </Trigger>
         <DataTrigger Binding="{Binding Selected}" Value="True">
           <Setter TargetName="cell" Property="Background" Value="{StaticResource ItemSelected}"/>
+          <Setter TargetName="cell" Property="BorderBrush" Value="{StaticResource ItemSelectedLine}"/>
         </DataTrigger>
         <DataTrigger Binding="{Binding DropHover}" Value="True">
           <Setter TargetName="cell" Property="Background" Value="{StaticResource ItemSelected}"/>
+          <Setter TargetName="cell" Property="BorderBrush" Value="{StaticResource ItemSelectedLine}"/>
         </DataTrigger>
         <DataTrigger Binding="{Binding Faded}" Value="True">
           <Setter TargetName="cell" Property="Opacity" Value="0.55"/>
@@ -53,73 +55,77 @@
   <Border x:Name="Root" Background="{StaticResource FenceBg}" BorderBrush="{StaticResource FenceBorder}" BorderThickness="1" CornerRadius="6">
     <Grid>
       <Grid.RowDefinitions>
-        <RowDefinition Height="32"/>
+        <RowDefinition Height="36"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <!-- 标题栏：按住拖动整个分区 -->
-      <Border x:Name="Header" Grid.Row="0" Background="#01000000" BorderBrush="{StaticResource FenceLine}" BorderThickness="0,0,0,1" Cursor="SizeAll">
-        <DockPanel Margin="12,0,6,0">
-          <Button x:Name="MenuBtn" DockPanel.Dock="Right" Width="24" Height="24" Cursor="Hand" ToolTip="分区菜单" Focusable="False">
+      <!-- 标题栏：按住拖动整个分区。不画分隔线，靠留白分开（和 Windows 11 的卡片一样） -->
+      <Border x:Name="Header" Grid.Row="0" Background="#01000000" Cursor="SizeAll">
+        <DockPanel Margin="14,0,6,0">
+          <Button x:Name="MenuBtn" DockPanel.Dock="Right" Width="28" Height="28" Cursor="Hand" ToolTip="分区菜单" Focusable="False">
             <Button.Template>
               <ControlTemplate TargetType="Button">
-                <Border x:Name="b" Background="Transparent" CornerRadius="3">
-                  <Path Data="M0,0 H12 M0,4 H12 M0,8 H12" Stroke="White" StrokeThickness="1.3" Opacity="0.8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Border x:Name="b" Background="Transparent" CornerRadius="14">
+                  <Path Data="{StaticResource MoreDots}" Fill="White" Opacity="0.85" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <ControlTemplate.Triggers>
-                  <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#26FFFFFF"/></Trigger>
+                  <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource SoftOn}"/></Trigger>
                 </ControlTemplate.Triggers>
               </ControlTemplate>
             </Button.Template>
           </Button>
-          <TextBlock x:Name="HintText" DockPanel.Dock="Right" Foreground="{StaticResource TextSub}" VerticalAlignment="Center" Margin="8,0,6,0" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="HintText" DockPanel.Dock="Right" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,4,0" TextTrimming="CharacterEllipsis"/>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <TextBlock x:Name="TitleText" FontSize="13" FontWeight="Bold"/>
-            <TextBlock x:Name="CountText" Foreground="{StaticResource TextSub}" Margin="8,0,0,0"/>
+            <TextBlock x:Name="TitleText" FontSize="13.5" FontWeight="SemiBold" Effect="{StaticResource TextShadowSoft}"/>
+            <TextBlock x:Name="CountText" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" Margin="7,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,1"/>
           </StackPanel>
         </DockPanel>
       </Border>
 
-      <!-- 事项标签页（只有"进行中"有） -->
-      <ItemsControl x:Name="Tabs" Grid.Row="1" Margin="8,6,8,0" Visibility="Collapsed">
+      <!-- 事项标签页（只有"进行中"有）：圆角小药丸 -->
+      <ItemsControl x:Name="Tabs" Grid.Row="1" Margin="10,0,10,0" Visibility="Collapsed">
         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border x:Name="t" CornerRadius="4,4,0,0" Padding="10,4" Margin="0,0,2,0" Background="#2E000000" Cursor="Hand" AllowDrop="True" Tag="{Binding Name}">
+            <Border x:Name="t" CornerRadius="12" Padding="10,3,10,4" Margin="0,0,4,2" Background="Transparent" Cursor="Hand" AllowDrop="True" Tag="{Binding Name}">
               <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="n" Text="{Binding Display}" Foreground="{StaticResource TextSub}"/>
-                <TextBlock x:Name="c" Text="{Binding Count}" Foreground="{StaticResource TextDim}" Margin="4,0,0,0"/>
+                <TextBlock x:Name="n" Text="{Binding Display}" Foreground="{StaticResource TextSub}" Effect="{StaticResource TextShadowSoft}"/>
+                <TextBlock x:Name="c" Text="{Binding Count}" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" Margin="5,0,0,0"/>
               </StackPanel>
             </Border>
             <DataTemplate.Triggers>
+              <Trigger SourceName="t" Property="IsMouseOver" Value="True">
+                <Setter TargetName="t" Property="Background" Value="{StaticResource SoftHover}"/>
+                <Setter TargetName="n" Property="Foreground" Value="White"/>
+              </Trigger>
               <DataTrigger Binding="{Binding On}" Value="True">
-                <Setter TargetName="t" Property="Background" Value="#29FFFFFF"/>
+                <Setter TargetName="t" Property="Background" Value="{StaticResource SoftOn}"/>
                 <Setter TargetName="n" Property="Foreground" Value="White"/>
                 <Setter TargetName="c" Property="Foreground" Value="#D8D8D8"/>
               </DataTrigger>
-              <Trigger SourceName="t" Property="IsMouseOver" Value="True">
-                <Setter TargetName="n" Property="Foreground" Value="White"/>
-              </Trigger>
             </DataTemplate.Triggers>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
       <!-- 类型筛选 -->
-      <ItemsControl x:Name="Chips" Grid.Row="2" Margin="10,6,10,0" Visibility="Collapsed">
+      <ItemsControl x:Name="Chips" Grid.Row="2" Margin="12,4,12,0" Visibility="Collapsed">
         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border x:Name="c" CornerRadius="9" BorderThickness="1" BorderBrush="#38FFFFFF" Padding="8,1" Margin="0,0,6,0" Cursor="Hand" Tag="{Binding Name}">
-              <TextBlock x:Name="t" Text="{Binding Display}" FontSize="11" Foreground="{StaticResource TextSub}"/>
+            <Border x:Name="c" CornerRadius="10" BorderThickness="1" BorderBrush="#2EFFFFFF" Padding="9,1,9,2" Margin="0,0,6,0" Cursor="Hand" Tag="{Binding Name}">
+              <TextBlock x:Name="t" Text="{Binding Display}" FontSize="11" Foreground="{StaticResource TextSub}" Effect="{StaticResource TextShadowSoft}"/>
             </Border>
             <DataTemplate.Triggers>
+              <Trigger SourceName="c" Property="IsMouseOver" Value="True">
+                <Setter TargetName="c" Property="Background" Value="{StaticResource SoftHover}"/>
+              </Trigger>
               <DataTrigger Binding="{Binding On}" Value="True">
-                <Setter TargetName="c" Property="BorderBrush" Value="{StaticResource Green}"/>
-                <Setter TargetName="c" Property="Background" Value="#5907C255"/>
+                <Setter TargetName="c" Property="BorderBrush" Value="#B307C255"/>
+                <Setter TargetName="c" Property="Background" Value="#4D07C255"/>
                 <Setter TargetName="t" Property="Foreground" Value="White"/>
               </DataTrigger>
             </DataTemplate.Triggers>
@@ -127,7 +133,7 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <ScrollViewer x:Name="Scroll" Grid.Row="3" Margin="4,6,2,4" Background="#01000000" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+      <ScrollViewer x:Name="Scroll" Grid.Row="3" Margin="6,4,3,6" Background="#01000000" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
         <ScrollViewer.Resources>
           <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScroll}"/>
         </ScrollViewer.Resources>
@@ -141,12 +147,12 @@
           </Canvas>
         </Grid>
       </ScrollViewer>
-      <TextBlock x:Name="EmptyText" Grid.Row="3" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+      <TextBlock x:Name="EmptyText" Grid.Row="3" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
 
-      <Border x:Name="Footer" Grid.Row="4" BorderBrush="#1AFFFFFF" BorderThickness="0,1,0,0" Height="26" Visibility="Collapsed">
-        <DockPanel Margin="12,0">
-          <TextBlock x:Name="FooterLink" DockPanel.Dock="Right" Text="归档记录 / 撤回" Cursor="Hand" VerticalAlignment="Center" Foreground="White" Opacity="0.9" FontSize="11.5"/>
-          <TextBlock x:Name="FooterText" Foreground="{StaticResource TextSub}" VerticalAlignment="Center" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+      <Border x:Name="Footer" Grid.Row="4" BorderBrush="#14FFFFFF" BorderThickness="0,1,0,0" Height="28" Visibility="Collapsed">
+        <DockPanel Margin="14,0">
+          <TextBlock x:Name="FooterLink" DockPanel.Dock="Right" Text="归档记录 / 撤回" Cursor="Hand" VerticalAlignment="Center" Foreground="White" Opacity="0.9" FontSize="11.5" Margin="10,0,0,0" Effect="{StaticResource TextShadowSoft}"/>
+          <TextBlock x:Name="FooterText" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" VerticalAlignment="Center" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
       </Border>
 
