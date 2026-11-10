@@ -70,9 +70,11 @@ public partial class VaultWindow : Window
     /// <summary>解锁了就是打开的密码箱，锁着是 null。</summary>
     internal Vault? Current => _v;
     public event Action? Unlocked;
+#if FEAT_VAULTAPI
     public Func<bool>? ApiOn;
     public Action<bool>? SetApiOn;
     public string ApiDoc = "";
+#endif
 
     /// <summary>锁着时有程序来要密码：在解锁界面上说明是谁在要。</summary>
     public void SetLockNotice(string text)
@@ -576,6 +578,7 @@ public partial class VaultWindow : Window
         Add(L.T("修改主密码…"), ChangePassword);
         Add(L.T("导出加密备份…"), ExportBackup);
         Add(L.T("从加密备份恢复…"), async () => await RestoreBackup());
+#if FEAT_VAULTAPI
         m.Items.Add(new Separator());
         Add(L.T("对外接口（让其他程序取密码）…"), () =>
         {
@@ -583,6 +586,7 @@ public partial class VaultWindow : Window
             VaultApiPanel.Show(this, _v.Data, ApiOn?.Invoke() == true, on => SetApiOn?.Invoke(on), () => _v?.Save(), ApiDoc);
             Touch();
         });
+#endif
         m.IsOpen = true;
     }
 

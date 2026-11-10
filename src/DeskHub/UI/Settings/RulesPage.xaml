@@ -1,0 +1,14 @@
+<UserControl x:Class="DeskHub.UI.Settings.RulesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 整理规则（事项分类和流转，编译开关 FeatFlow） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">事项规则</TextBlock>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,4,0,12" TextWrapping="Wrap">
+      文件名里包含关键词，就归进对应事项；一个都不包含的放进“其他”。关键词用逗号分开，不区分大小写。
+      绿色区域是你拖动文件时教会它的，也可以直接改。
+    </TextBlock>
+    <StackPanel x:Name="RuleRows"/>
+    <Button x:Name="AddTopic" Content="＋ 新增事项" Style="{StaticResource BtnW}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+  </StackPanel>
+</UserControl>

@@ -24,13 +24,13 @@ public sealed class QueryRequest
 public static class IndexerHost
 {
     static string Sid => WindowsIdentity.GetCurrent().User!.Value;
-    public static string PipeName => "DeskHub.Search." + Sid;
+    public static string PipeName => Brand.Id + ".Search." + Sid;
     static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     // ================= 索引程序本体（--indexer 主程序进程号） =================
     public static int Run(int parentPid)
     {
-        using var single = new Mutex(true, @"Local\DeskHub.Indexer", out bool first);
+        using var single = new Mutex(true, Brand.IndexerMutex, out bool first);
         if (!first) return 0;
         try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
 
@@ -58,10 +58,8 @@ public static class IndexerHost
         {
             try
             {
-                var sec = new PipeSecurity();
-                sec.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance, AccessControlType.Allow));
-                using var pipe = NamedPipeServerStreamAcl.Create(PipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
-                    PipeTransmissionMode.Byte, PipeOptions.None, 1 << 16, 1 << 16, sec);
+                // 只给本机本用户（见 LocalPipe）
+                using var pipe = Interop.LocalPipe.Create(PipeName, NamedPipeServerStream.MaxAllowedServerInstances, false, 1 << 16, 1 << 16);
                 pipe.WaitForConnection();
                 using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 1 << 16, leaveOpen: true);

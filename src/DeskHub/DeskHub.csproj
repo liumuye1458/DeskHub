@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- 版本差异（程序名、可选功能开关）都在 Edition 文件夹里，见 Edition.props 的说明 -->
+  <Import Project="Edition\Edition.props" />
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <!-- 带 Windows 版本号：截图的"提取文字"要用 Windows 自带的文字识别 -->
@@ -14,13 +17,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>DeskHub</AssemblyName>
     <RootNamespace>DeskHub</RootNamespace>
     <StartupObject>DeskHub.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Product>New B Desk</Product>
-    <AssemblyTitle>New B Desk</AssemblyTitle>
     <Company>HOTA</Company>
     <!-- 省内存：工作站 GC 非并发，空闲时更积极回收 -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
@@ -38,11 +38,67 @@
     <Resource Include="Assets\app.ico" />
     <!-- 界面多语言（中文原文 → 译文），打包进程序里 -->
     <EmbeddedResource Include="Lang\*.json" Exclude="Lang\_keys.json" />
-    <!-- 给要接入密码箱接口的程序看的说明，跟程序放在一起 -->
-    <None Include="密码箱接口说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Include="本机Claude服务说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- 内存紧时主动整理大对象堆（索引的大数组在里面） -->
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+  </ItemGroup>
+
+  <!-- ================= 可选功能（开关在 Edition\Edition.props） =================
+       开着：定义 FEAT_xxx 给代码里的 #if 用；关掉：对应的源文件整个不编译。 -->
+  <Target Name="CheckEdition" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(FeatArchive)' == 'true' And '$(FeatFlow)' != 'true'" Text="Edition.props：自动归档（FeatArchive）要有事项分类和流转（FeatFlow），请一起开或者一起关。" />
+    <Error Condition="'$(FeatTripAi)' == 'true' And '$(FeatCalendar)' != 'true'" Text="Edition.props：AI 识别行程（FeatTripAi）要有日历（FeatCalendar），请一起开或者一起关。" />
+  </Target>
+
+  <PropertyGroup>
+    <DefineConstants Condition="'$(FeatArchive)' == 'true'">$(DefineConstants);FEAT_ARCHIVE</DefineConstants>
+    <DefineConstants Condition="'$(FeatLocalClaude)' == 'true'">$(DefineConstants);FEAT_LOCALCLAUDE</DefineConstants>
+    <DefineConstants Condition="'$(FeatTripAi)' == 'true'">$(DefineConstants);FEAT_TRIPAI</DefineConstants>
+    <DefineConstants Condition="'$(FeatVaultApi)' == 'true'">$(DefineConstants);FEAT_VAULTAPI</DefineConstants>
+    <DefineConstants Condition="'$(FeatHotkeys)' == 'true'">$(DefineConstants);FEAT_HOTKEYS</DefineConstants>
+    <DefineConstants Condition="'$(FeatBalloon)' == 'true'">$(DefineConstants);FEAT_BALLOON</DefineConstants>
+    <DefineConstants Condition="'$(FeatFlow)' == 'true'">$(DefineConstants);FEAT_FLOW</DefineConstants>
+    <DefineConstants Condition="'$(FeatCalendar)' == 'true'">$(DefineConstants);FEAT_CALENDAR</DefineConstants>
+  </PropertyGroup>
+
+  <!-- 自动归档 -->
+  <ItemGroup Condition="'$(FeatArchive)' != 'true'">
+    <Compile Remove="Core\Archiver.cs;UI\ArchiveConfirmWindow.xaml.cs;DeskController.Archive.cs;UI\Settings\ArchiveSection.xaml.cs" />
+    <Page Remove="UI\ArchiveConfirmWindow.xaml;UI\Settings\ArchiveSection.xaml" />
+  </ItemGroup>
+  <!-- 本机 Claude 小服务 -->
+  <ItemGroup Condition="'$(FeatLocalClaude)' != 'true'">
+    <Compile Remove="Core\LocalClaude.cs;ToolHub.LocalClaude.cs;UI\Settings\LocalClaudeSection.xaml.cs" />
+    <Page Remove="UI\Settings\LocalClaudeSection.xaml" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FeatLocalClaude)' == 'true'">
+    <None Include="本机Claude服务说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- AI 识别行程 -->
+  <ItemGroup Condition="'$(FeatTripAi)' != 'true'">
+    <Compile Remove="Core\TripAi.cs;UI\TripImportWindow.cs;UI\Settings\TripAiSection.xaml.cs" />
+    <Page Remove="UI\Settings\TripAiSection.xaml" />
+  </ItemGroup>
+  <!-- 密码箱对外接口（给要接入的程序看的说明跟程序放在一起） -->
+  <ItemGroup Condition="'$(FeatVaultApi)' != 'true'">
+    <Compile Remove="Core\VaultApi.cs;UI\VaultApiWindows.cs;ToolHub.VaultApi.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FeatVaultApi)' == 'true'">
+    <None Include="密码箱接口说明.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- 全局快捷键 -->
+  <ItemGroup Condition="'$(FeatHotkeys)' != 'true'">
+    <Compile Remove="Interop\Hotkeys.cs;ToolHub.Hotkeys.cs;UI\Settings\KeysPage.xaml.cs" />
+    <Page Remove="UI\Settings\KeysPage.xaml" />
+  </ItemGroup>
+  <!-- 事项分类和流转 -->
+  <ItemGroup Condition="'$(FeatFlow)' != 'true'">
+    <Compile Remove="Core\Flow.cs;UI\LearnToast.xaml.cs;DeskController.Flow.cs;UI\Settings\RulesPage.xaml.cs;UI\Settings\FlowPage.xaml.cs" />
+    <Page Remove="UI\LearnToast.xaml;UI\Settings\RulesPage.xaml;UI\Settings\FlowPage.xaml" />
+  </ItemGroup>
+  <!-- 日历和定时便签 -->
+  <ItemGroup Condition="'$(FeatCalendar)' != 'true'">
+    <Compile Remove="Core\Calendar.cs;Core\Guide.cs;UI\CalendarWidget.cs;UI\TripCards.cs;UI\GuideEditor.cs;UI\GuideManager.cs;UI\GuideWindow.cs;ToolHub.Calendar.cs;DeskController.Calendar.cs;UI\Settings\CalendarSection.xaml.cs" />
+    <Page Remove="UI\Settings\CalendarSection.xaml" />
   </ItemGroup>
 
 </Project>

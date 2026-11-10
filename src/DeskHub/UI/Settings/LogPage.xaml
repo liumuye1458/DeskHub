@@ -1,0 +1,11 @@
+<UserControl x:Class="DeskHub.UI.Settings.LogPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 移动记录：归档、分区标题栏按钮挪走的文件都记在这里，按批撤回（FileMover） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">移动记录</TextBlock>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,4,0,12" TextWrapping="Wrap" Text="本工具帮你挪走的文件都记在这里（保留 180 天），点“撤回这批”搬回原来的位置。"/>
+    <TextBlock x:Name="LogEmpty" Text="还没有挪过文件" Foreground="#AAA" Margin="0,4"/>
+    <StackPanel x:Name="LogRows"/>
+  </StackPanel>
+</UserControl>

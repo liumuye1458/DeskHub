@@ -588,7 +588,7 @@ public sealed class FileIndex : IDisposable
 
     /// <summary>
     /// 先读上次存下的索引（一两秒就能搜），再在后台低优先级重扫一遍磁盘，把关机期间的变化补上。
-    /// 只索引本机硬盘；U 盘、网络盘不索引。
+    /// 只索引本机硬盘；U 盘、网络盘不索引；USB 接的移动硬盘看 Edition.IndexUsbDisks。
     /// </summary>
     public void Start(Action<string>? log = null)
     {
@@ -596,6 +596,9 @@ public sealed class FileIndex : IDisposable
         {
             try { return d.DriveType == DriveType.Fixed && d.IsReady; } catch { return false; }
         }).Select(d => d.RootDirectory.FullName).ToList();
+        // USB 接的移动硬盘系统也当本地磁盘；版本可以选不扫它（Edition.IndexUsbDisks）
+        if (!Edition.IndexUsbDisks)
+            foreach (var r in roots.Where(UsbDisk.Is).ToList()) { roots.Remove(r); log?.Invoke($"{r} 是 USB 接的盘，不索引"); }
 
         foreach (var root in roots)
         {

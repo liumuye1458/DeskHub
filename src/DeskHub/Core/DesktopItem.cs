@@ -2,8 +2,8 @@ using System.IO;
 
 namespace DeskHub.Core;
 
-/// <summary>Custom = 用户自己建的分区（具体是哪个看 DesktopItem.Fence）。</summary>
-public enum Zone { Apps, Folders, Today, Active, Cold, Custom }
+/// <summary>Custom = 用户自己建的分区（具体是哪个看 DesktopItem.Fence）；Files = 没有事项分类和流转时，散放的文件都在这。只能往后加（存档里存的是数字）。</summary>
+public enum Zone { Apps, Folders, Today, Active, Cold, Custom, Files }
 
 public enum Kind { Doc, Sheet, Slide, Pdf, Image, Archive, Video, Audio, Program, Other }
 

@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Threading;
-using DeskHub.Interop;
 using DeskHub.Search;
 using DeskHub.Shot;
 using DeskHub.UI;
@@ -10,38 +9,30 @@ using DeskHub.Core;
 namespace DeskHub;
 
 /// <summary>
-/// 小工具：文件查找、截图、计算器、备忘录、密码箱，以及它们的快捷键和桌面工具条。
+/// 工具条上的一个按钮（列表在 Edition.DockButtons）。
+/// 内置功能只写键名，名字、图标、动作由 ToolHub 补上；本版本关掉的功能对应的键会自动跳过。
+/// 自己加的按钮要写全：按钮字、图标（20×20 的线条路径）、说明、点了干什么。
+/// </summary>
+public sealed record DockButton(string Key, string? Label = null, string? Icon = null, string? Tip = null, Action<ToolHub>? Run = null);
+
+/// <summary>
+/// 小工具：文件查找、截图、计算器、密码箱，以及桌面工具条。
+/// 可选功能各在一个文件里（编译开关见 Edition/Edition.props）：
+///   ToolHub.Hotkeys.cs 快捷键 / ToolHub.Calendar.cs 日历、备忘录便签、行程提醒 / ToolHub.VaultApi.cs 密码箱对外接口 / ToolHub.LocalClaude.cs 本机 Claude 小服务
 /// 窗口都是第一次用到时才创建，不用不占内存。
 /// </summary>
-public sealed class ToolHub : IDisposable
+public sealed partial class ToolHub : IDisposable
 {
-    /// <summary>可以设快捷键的功能：配置里的键名、显示名、默认快捷键。</summary>
-    public static readonly (string Key, string Name, string Default)[] Actions =
-    {
-        ("shot", L.T("截图"), "Ctrl+Alt+A"),          // 沿用 360 的设置
-        ("search", L.T("文件查找"), Hotkeys.DoubleCtrl),
-        ("calc", L.T("计算器"), ""),
-        ("memo", L.T("备忘录"), ""),
-        ("calendar", L.T("日历"), ""),
-        ("vault", L.T("密码箱"), ""),
-    };
-
-    /// <summary>功能键名 → 工具条上的按钮文字。</summary>
-    static string DockLabel(string key) => key switch { "shot" => L.T("截图"), "search" => L.T("查找"), "calc" => L.T("计算器"), "memo" => L.T("备忘录"), "calendar" => L.T("日历"), _ => L.T("密码箱") };
+    /// <summary>内置功能：键名、名字（菜单、快捷键设置里用）、按钮字、图标、动作。</summary>
+    public sealed record Builtin(string Key, string Name, string Label, string Icon, Action Run);
 
     readonly DeskController _c;
     readonly bool _sandbox;
-    Hotkeys? _keys;
     SearchWindow? _search;
     CalcWindow? _calc;
     DockWindow? _dock;
-    GuideManager? _memo;
     VaultWindow? _vault;
-    readonly Dictionary<string, GuideWindow> _guides = new();
-    readonly DispatcherTimer _remind = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(30) };
-
-    public Dictionary<string, string> HotkeyErrors { get; private set; } = new();
-    public Hotkeys? Keys => _keys;
+    List<Builtin>? _builtins;
 
     public ToolHub(DeskController c, bool sandbox)
     {
@@ -49,68 +40,68 @@ public sealed class ToolHub : IDisposable
         ShotSession.Ended += () => Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, App.TrimMemory);
     }
 
-    public string HotkeyOf(string key) =>
-        _c.Cfg.Hotkeys.TryGetValue(key, out var v) ? v : Actions.First(a => a.Key == key).Default;
+    /// <summary>本版本有的内置功能。</summary>
+    public IReadOnlyList<Builtin> Builtins => _builtins ??= MakeBuiltins();
+
+    List<Builtin> MakeBuiltins()
+    {
+        var l = new List<Builtin>
+        {
+            new("search", L.T("文件查找"), L.T("查找"), "M8.5,3 A5.5,5.5 0 1 1 8.49,3 Z M12.5,12.5 L17,17", Search),
+            new("shot", L.T("截图"), L.T("截图"), "M5,1 V15 H19 M1,5 H15 V19", () => Shot()),
+            new("calc", L.T("计算器"), L.T("计算器"), "M4,2 H16 V18 H4 Z M7,5.5 H13 M7,9.5 H7.6 M10,9.5 H10.6 M13,9.5 H13.6 M7,12.5 H7.6 M10,12.5 H10.6 M13,12.5 H13.6 M7,15.5 H7.6 M10,15.5 H10.6 M13,15.5 H13.6", Calc),
+            new("vault", L.T("密码箱"), L.T("密码箱"), "M4,9 H16 V18 H4 Z M7,9 V6 A3,3 0 0 1 13,6 V9 M10,12.5 V14.5", Vault),
+            new("arrange", L.T("排列桌面：点一下对齐你现在的摆法，再点一下（或双击）按推荐方案重排"), L.T("排列"), "M2,2 H8.5 V8.5 H2 Z M11.5,2 H18 V8.5 H11.5 Z M2,11.5 H8.5 V18 H2 Z M11.5,11.5 H18 V18 H11.5 Z", () => Arrange()),
+            new("settings", L.T("设置"), L.T("设置"), "M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z M10,2.5 V4.7 M10,15.3 V17.5 M2.5,10 H4.7 M15.3,10 H17.5 M4.7,4.7 L6.3,6.3 M13.7,13.7 L15.3,15.3 M4.7,15.3 L6.3,13.7 M13.7,6.3 L15.3,4.7", () => _c.OpenSettings("general")),
+        };
+        AddCalendarBuiltins(l);
+        return l;
+    }
+
+    // 可选功能接进来的地方（对应文件不编译时，这些调用自动去掉）
+    partial void AddCalendarBuiltins(List<Builtin> list);
+    partial void StartCalendar();
+    partial void StopCalendar();
+    partial void AddDesktopWindows(List<Window> list);
+    partial void StartVaultApi();
+    partial void StopVaultApi();
+    partial void SetupVault(VaultWindow w);
+    partial void StartLocalClaude();
+    partial void StopLocalClaude();
+    partial void StartHotkeys();
+    partial void StopHotkeys();
 
     public void Start()
     {
         _dock = new DockWindow();
-        _dock.Add(L.T("查找"), "M8.5,3 A5.5,5.5 0 1 1 8.49,3 Z M12.5,12.5 L17,17", L.T("文件查找"), Search);
-        _dock.Add(L.T("截图"), "M5,1 V15 H19 M1,5 H15 V19", L.T("截图"), () => Shot());
-        _dock.Add(L.T("计算器"), "M4,2 H16 V18 H4 Z M7,5.5 H13 M7,9.5 H7.6 M10,9.5 H10.6 M13,9.5 H13.6 M7,12.5 H7.6 M10,12.5 H10.6 M13,12.5 H13.6 M7,15.5 H7.6 M10,15.5 H10.6 M13,15.5 H13.6", L.T("计算器"), Calc);
-        _dock.Add(L.T("备忘录"), "M5,2 H15 V18 H5 Z M8,6.5 H12.5 M8,10 H12.5 M8,13.5 H11", L.T("备忘录"), Memo);
-        _dock.Add(L.T("日历"), "M3,4 H17 V17 H3 Z M3,8 H17 M7,2 V5.5 M13,2 V5.5 M6.5,11.5 H7.5 M9.5,11.5 H10.5 M12.5,11.5 H13.5 M6.5,14.5 H7.5 M9.5,14.5 H10.5", L.T("日历"), () => Calendar());
-        _dock.Add(L.T("密码箱"), "M4,9 H16 V18 H4 Z M7,9 V6 A3,3 0 0 1 13,6 V9 M10,12.5 V14.5", L.T("密码箱"), Vault);
-        _dock.Add(L.T("排列"), "M2,2 H8.5 V8.5 H2 Z M11.5,2 H18 V8.5 H11.5 Z M2,11.5 H8.5 V18 H2 Z M11.5,11.5 H18 V18 H11.5 Z", L.T("排列桌面：点一下对齐你现在的摆法，再点一下（或双击）按推荐方案重排"), () => Arrange());
-        _dock.Add(L.T("设置"), "M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z M10,2.5 V4.7 M10,15.3 V17.5 M2.5,10 H4.7 M15.3,10 H17.5 M4.7,4.7 L6.3,6.3 M13.7,13.7 L15.3,15.3 M4.7,15.3 L6.3,13.7 M13.7,6.3 L15.3,4.7", L.T("设置"), () => _c.OpenSettings("general"));
+        _dock.SetOptions(Edition.DockNoActivate, Edition.DockExcludeFromCapture);
+        foreach (var b in Edition.DockButtons) AddDockButton(b);
+        if (Edition.DockAcceptsShortcuts) AddUserApps();
         _dock.Moved += () => _c.SaveWindowPos("dock", _dock);
         _dock.StateChanged += SaveDockState;
         _dock.Show();
         if (!_c.RestoreWindowPos("dock", _dock)) DockDefault();
         if (_c.Cfg.DockCollapsed) _dock.RestoreCollapsed(new Point(_dock.Left, _dock.Top), _c.Cfg.DockRight, _c.Cfg.DockTabTop);
 
-        // 备忘录：贴在屏幕上的指引便签。每 30 秒看一次：定时的到点出现、过了凌晨 5 点每天的重新出现
-        Core.GuideStore.Load();
-        Core.GuideStore.Changed += SyncGuides;
-        // 行程：提前一天弹便签提醒（也是每 30 秒看一次）
-        Core.TripStore.Load();
-        _remind.Tick += (_, _) => { CheckTrips(); SyncGuides(flash: true); };
-        _remind.Start();
-        CheckTrips();
-        SyncGuides(flash: false);
-        ApplyVaultApi();
-        ApplyLocalClaude();
+        StartCalendar();
+        StartVaultApi();
+        StartLocalClaude();
 
         if (_sandbox) return; // 沙盒测试不抢真实的快捷键
-        _keys = new Hotkeys();
-        ApplyHotkeys();
+        StartHotkeys();
         // 开机后稍等一会儿再启动索引程序，不和开机抢资源
         var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
         t.Tick += (_, _) => { t.Stop(); IndexerHost.EnsureStarted(); };
         t.Start();
     }
 
-    /// <summary>按配置重新注册快捷键；返回注册失败的（功能名 → 原因）。</summary>
-    public Dictionary<string, string> ApplyHotkeys()
+    void AddDockButton(DockButton b)
     {
-        if (_keys == null) return new();
-        var list = new List<(string, string, Action)>();
-        foreach (var a in Actions)
-        {
-            Action run = a.Key switch { "shot" => () => Shot(), "search" => Search, "calc" => Calc, "memo" => Memo, "calendar" => () => Calendar(), _ => Vault };
-            list.Add((a.Key, HotkeyOf(a.Key), run));
-        }
-        HotkeyErrors = _keys.Apply(list);
-        foreach (var a in Actions)
-        {
-            var spec = HotkeyOf(a.Key);
-            _dock?.SetTip(DockLabel(a.Key), a.Name + (spec.Length == 0 ? "" : spec == Hotkeys.DoubleCtrl ? L.T("（连按两下 Ctrl）") : $"（{spec}）"));
-        }
-        return HotkeyErrors;
+        if (b.Run != null) { _dock!.Add(b.Key, b.Label ?? b.Key, b.Icon ?? "", b.Tip ?? b.Label ?? "", () => b.Run(this)); return; }
+        var bi = Builtins.FirstOrDefault(x => x.Key == b.Key);
+        if (bi == null) return; // 本版本没有这个功能
+        _dock!.Add(bi.Key, b.Label ?? bi.Label, b.Icon ?? bi.Icon, b.Tip ?? bi.Name, bi.Run);
     }
-
-    /// <summary>设置里录快捷键时先停用，免得按下去直接触发截图。</summary>
-    public void SuspendHotkeys() => _keys?.Apply(Array.Empty<(string, string, Action)>());
 
     public void Search()
     {
@@ -139,179 +130,17 @@ public sealed class ToolHub : IDisposable
         _calc.Toggle();
     }
 
-    public void Memo()
-    {
-        if (_memo == null)
-        {
-            _memo = new GuideManager(() => SystemParameters.WorkArea);
-            _memo.Closed += (_, _) => { _memo = null; App.TrimMemory(); };
-        }
-        _memo.Popup();
-    }
-
-    /// <summary>显示 / 隐藏桌面上的日历。</summary>
-    public void Calendar() => _c.ToggleCalendar();
-
-    /// <summary>设置改了：日历重画。</summary>
-    public void RefreshCalendar() => _c.CalWidget?.Refresh();
-
-    void CheckTrips() => Core.TripStore.CheckReminders(DateTime.Now, SystemParameters.WorkArea);
-
     public void Vault()
     {
         if (_vault == null)
         {
-            _vault = new VaultWindow { ApiOn = () => _c.Cfg.VaultApi, SetApiOn = on => { _c.Cfg.VaultApi = on; _c.Cfg.Save(); ApplyVaultApi(); }, ApiDoc = ApiDocPath };
+            _vault = new VaultWindow();
+            SetupVault(_vault);
             // 关窗口就锁上并释放，下次打开重新解锁
             _vault.Closed += (_, _) => { _vault = null; Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, App.TrimMemory); };
         }
         _vault.Popup();
     }
-
-    // ---------------- 本机 Claude 小服务 ----------------
-    Core.LocalClaude? _claude;
-    public Core.LocalClaude? LocalClaude => _claude;
-    /// <summary>没开起来的原因（端口被占、没填口令），设置页显示。</summary>
-    public string LocalClaudeError { get; private set; } = "";
-
-    /// <summary>按设置开 / 关 / 换端口口令重开（默认关）。</summary>
-    public void ApplyLocalClaude()
-    {
-        _claude?.Dispose();
-        _claude = null;
-        LocalClaudeError = "";
-        if (!_c.Cfg.LocalClaude) return;
-        var s = new Core.LocalClaude(_c.Cfg.LocalClaudePort, Core.Secret.Unprotect(_c.Cfg.LocalClaudeToken));
-        if (s.Start()) _claude = s;
-        else LocalClaudeError = s.Error;
-    }
-
-    // ---------------- 密码箱对外接口 ----------------
-    Core.VaultApiServer? _api;
-    public static string ApiDocPath => System.IO.Path.Combine(AppContext.BaseDirectory, "密码箱接口说明.md");
-
-    /// <summary>按设置开 / 关接口（默认关）。</summary>
-    public void ApplyVaultApi()
-    {
-        if (_c.Cfg.VaultApi && _api == null)
-        {
-            _api = new Core.VaultApiServer(Core.VaultApiServer.PipeNameFor(_sandbox),
-                (req, cl) => Application.Current.Dispatcher.InvokeAsync(() => HandleApi(req, cl)).Task.Unwrap(),
-                msg => { try { System.IO.File.AppendAllText(System.IO.Path.Combine(Core.AppConfig.DataDir, "error.log"), $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n"); } catch { } });
-            _api.Start();
-        }
-        else if (!_c.Cfg.VaultApi && _api != null) { _api.Dispose(); _api = null; }
-    }
-
-    async Task<Core.ApiResponse> HandleApi(Core.ApiRequest req, Core.ApiClient cl)
-    {
-        if (!_c.Cfg.VaultApi) return Core.ApiResponse.Fail("disabled");
-        switch (req.Op.Trim().ToLowerInvariant())
-        {
-            case "status":
-                return new Core.ApiResponse { Ok = true, App = "DeskHub", Api = Core.VaultApiServer.Version, Locked = _vault?.Current == null };
-            case "get": break;
-            default: return Core.ApiResponse.Fail("bad_request");
-        }
-        if (Core.VaultApiServer.Host(req.Url) == null && string.IsNullOrWhiteSpace(req.Name)) return Core.ApiResponse.Fail("bad_request");
-        var target = req.Url is { Length: > 0 } ? Core.VaultApiServer.Host(req.Url)! : req.Name!.Trim();
-
-        var v = await UnlockForApi(cl, target);
-        if (v == null) return Core.ApiResponse.Fail("locked");
-
-        var cands = Core.VaultApiServer.Match(v.Data.Entries, req);
-        void Log(string entry, string result)
-        {
-            v.Data.ApiLog.Add(new Core.ApiLogItem { Exe = cl.Exe, Target = target, Entry = entry, Result = result });
-            if (v.Data.ApiLog.Count > 200) v.Data.ApiLog.RemoveRange(0, v.Data.ApiLog.Count - 200);
-        }
-        Core.ApiResponse Give(Core.VaultEntry e, string result)
-        {
-            e.LastUsed = DateTime.Now;
-            Log(e.Name + "（" + e.Account + "）", result);
-            v.Save();
-            _vault?.Refresh();
-            return new Core.ApiResponse { Ok = true, Credential = Core.VaultApiServer.ToCredential(e) };
-        }
-
-        // 点过"总是允许"的：同一个程序（文件指纹也一样）取同一条，直接给
-        foreach (var e in cands)
-        {
-            var g = v.Data.Grants.FirstOrDefault(g => g.EntryId == e.Id && g.Hash == cl.Hash && string.Equals(g.Exe, cl.Exe, StringComparison.OrdinalIgnoreCase));
-            if (g != null) { g.LastUsed = DateTime.Now; return Give(e, L.T("已授权")); }
-        }
-
-        var (ans, chosen) = await VaultConsent.Ask(cl, req, cands);
-        if (_vault?.Current != v) return Core.ApiResponse.Fail("locked"); // 确认期间被锁上了
-        switch (ans)
-        {
-            case VaultConsent.Answer.Once when chosen != null:
-                return Give(chosen, L.T("允许一次"));
-            case VaultConsent.Answer.Always when chosen != null:
-                v.Data.Grants.RemoveAll(g => g.EntryId == chosen.Id && string.Equals(g.Exe, cl.Exe, StringComparison.OrdinalIgnoreCase));
-                v.Data.Grants.Add(new Core.ApiGrant { Exe = cl.Exe, Hash = cl.Hash, EntryId = chosen.Id, LastUsed = DateTime.Now });
-                return Give(chosen, L.T("总是允许"));
-            case VaultConsent.Answer.NotFound:
-                Log("", "没找到"); v.Save();
-                return Core.ApiResponse.Fail("not_found");
-            case VaultConsent.Answer.Timeout:
-                Log("", "超时"); v.Save();
-                return Core.ApiResponse.Fail("timeout");
-            default:
-                Log("", "拒绝"); v.Save();
-                return Core.ApiResponse.Fail("denied");
-        }
-    }
-
-    /// <summary>密码箱锁着：打开解锁界面并说明是谁在要，等你解锁（最多 2 分钟）。</summary>
-    async Task<Core.Vault?> UnlockForApi(Core.ApiClient cl, string target)
-    {
-        if (_vault?.Current is { } v) return v;
-        if (!Core.Vault.Exists || _sandbox) return null; // 沙盒测试不弹解锁界面
-        Vault();
-        var w = _vault!;
-        w.SetLockNotice(L.F("「{0}」想取用 {1} 的登录信息。\n先输入主密码解锁，之后会再问你是否允许。", cl.Name, target));
-        var tcs = new TaskCompletionSource<bool>();
-        void OnUnlock() => tcs.TrySetResult(true);
-        void OnClose(object? s, EventArgs e) => tcs.TrySetResult(false);
-        w.Unlocked += OnUnlock;
-        w.Closed += OnClose;
-        try { await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(2))); }
-        finally { w.Unlocked -= OnUnlock; w.Closed -= OnClose; }
-        return w.Current;
-    }
-
-    // ---------------- 便签 ----------------
-    void SyncGuides() => SyncGuides(flash: false);
-
-    /// <summary>让屏幕上的便签和数据一致：该显示的显示（到点出现的闪几下），该收起的收起，改过的重画。</summary>
-    void SyncGuides(bool flash)
-    {
-        var now = DateTime.Now;
-        foreach (var (id, w) in _guides.ToList())
-        {
-            var n = Core.GuideStore.Find(id);
-            bool keep = n != null && (Core.GuideStore.Visible(n, now) || w.CountingDown) && w.IsTopmostNote == n.Topmost;
-            if (!keep) { w.Close(); _guides.Remove(id); }
-            else w.Refresh(n!);
-        }
-        foreach (var n in Core.GuideStore.D.Notes.Where(n => !_guides.ContainsKey(n.Id) && Core.GuideStore.Visible(n, now)))
-        {
-            var w = new GuideWindow(n, EditGuide, Memo);
-            w.Show();
-            _guides[n.Id] = w;
-            if (flash) w.Flash();
-        }
-    }
-
-    void EditGuide(Core.GuideNote n)
-    {
-        if (GuideEditor.Ask(_memo, n, false)) Core.GuideStore.Save();
-    }
-
-    /// <summary>测试用：屏幕上的便签窗口。</summary>
-    public IReadOnlyDictionary<string, GuideWindow> Guides => _guides;
-    public GuideManager OpenManagerForTest() { Memo(); return _memo!; }
 
     public DockWindow? Dock => _dock;
 
@@ -360,7 +189,13 @@ public sealed class ToolHub : IDisposable
     }
 
     /// <summary>贴在桌面上的窗口（资源管理器重启后要重新贴）。</summary>
-    public IEnumerable<Window> DesktopWindows() => _guides.Values.Where(g => !g.IsTopmostNote).Cast<Window>().Prepend(_dock!).Where(w => w != null);
+    public IEnumerable<Window> DesktopWindows()
+    {
+        var list = new List<Window>();
+        if (_dock != null) list.Add(_dock);
+        AddDesktopWindows(list);
+        return list;
+    }
 
     void SaveDockState()
     {
@@ -419,19 +254,16 @@ public sealed class ToolHub : IDisposable
 
     public void Dispose()
     {
-        _keys?.Dispose();
+        StopHotkeys();
         ShotSession.End();
         _search?.Close();
         _calc?.Close();
-        _remind.Stop();
-        Core.GuideStore.Changed -= SyncGuides;
-        foreach (var g in _guides.Values) g.Close();
-        _memo?.Close();
+        StopCalendar();
         _vault?.Close();
         Core.SecretClipboard.ClearNow();
         _arrToast?.Close();
-        _api?.Dispose();
-        _claude?.Dispose();
+        StopVaultApi();
+        StopLocalClaude();
         _dock?.Close();
     }
 }

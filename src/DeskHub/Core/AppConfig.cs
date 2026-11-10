@@ -137,7 +137,7 @@ public sealed class AppConfig
     public Dictionary<string, WallLook> Looks { get; set; } = new();
     /// <summary>最近一次调的全局深浅：没调过的新壁纸先用它。</summary>
     public double LookLast { get; set; } = 0.25;
-    public int LocalClaudePort { get; set; } = Core.LocalClaude.DefaultPort;
+    public int LocalClaudePort { get; set; } = Brand.ClaudePort;
     /// <summary>别的程序来问时要带的口令（用户自己填），DPAPI 加密存。</summary>
     public string LocalClaudeToken { get; set; } = "";
 
@@ -147,6 +147,8 @@ public sealed class AppConfig
     public bool DockRight { get; set; } = true;
     /// <summary>收起后小把手的上沿（-1 = 跟着工具条原来的高度）。</summary>
     public double DockTabTop { get; set; } = -1;
+    /// <summary>用户拖到工具条上的快捷方式 / 程序（Edition.DockAcceptsShortcuts 开着才用）。</summary>
+    public List<string> DockApps { get; set; } = new();
 
     public List<TopicRule> Topics { get; set; } = DefaultTopics();
     /// <summary>当前显示器组合下的布局（就是 Layouts[LayoutSig].Items 那一份）。</summary>
@@ -184,7 +186,7 @@ public sealed class AppConfig
 
     // ---------- 读写 ----------
     public static string DataDir { get; private set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskHub");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Brand.Id);
 
     public static void UseDataDir(string dir) => DataDir = dir;
 

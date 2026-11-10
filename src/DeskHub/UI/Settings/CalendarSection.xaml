@@ -1,0 +1,22 @@
+<UserControl x:Class="DeskHub.UI.Settings.CalendarSection"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 日历（编译开关 FeatCalendar） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,24,0,4">日历</TextBlock>
+    <TextBlock Foreground="#999" FontSize="12" TextWrapping="Wrap" Text="日历常驻在桌面上，和分区一样按住标题栏拖、右下角拉大小；拉宽会在右边列出接下来的行程。工具条上的“日历”（或你设的快捷键）可以隐藏 / 再显示。"/>
+    <CheckBox x:Name="CalShow" Style="{StaticResource Toggle}" Margin="0,12,0,4" Content="在桌面上显示日历"/>
+    <CheckBox x:Name="CalLunar" Style="{StaticResource Toggle}" Margin="0,8,0,4" Content="显示农历（含节气、春节中秋等传统节日）"/>
+    <CheckBox x:Name="CalChina" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示中国节假日（放假标“休”，调休上班标“班”）"/>
+    <TextBlock x:Name="CalChinaHint" Foreground="#999" FontSize="12" Margin="44,0,0,0" TextWrapping="Wrap"/>
+    <CheckBox x:Name="CalIndonesia" Style="{StaticResource Toggle}" Margin="0,10,0,2" Content="显示印尼红日子（整格标红：深红 = 法定假日，浅红 = 联合休假）"/>
+    <TextBlock x:Name="CalIndonesiaHint" Foreground="#999" FontSize="12" Margin="44,0,0,0" TextWrapping="Wrap"/>
+    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+      <TextBlock Text="一周从哪天开始" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <ComboBox x:Name="CalWeekStart" Width="120" Height="28" VerticalContentAlignment="Center">
+        <ComboBoxItem Content="周一"/>
+        <ComboBoxItem Content="周日"/>
+      </ComboBox>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

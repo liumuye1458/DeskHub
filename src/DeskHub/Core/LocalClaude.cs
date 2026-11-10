@@ -17,7 +17,7 @@ namespace DeskHub.Core;
 /// </summary>
 public sealed class LocalClaude : IDisposable
 {
-    public const int DefaultPort = 17860;
+    public const int DefaultPort = Brand.ClaudePort;
     /// <summary>单次调用最多等多久（日历那边等 2 分钟，这里要比它短，才能把“超时”说清楚）。</summary>
     public const int TimeoutSec = 100;
     public static readonly string[] Models = { "sonnet", "opus", "haiku", "fable" };
@@ -181,7 +181,7 @@ public sealed class LocalClaude : IDisposable
         if (r.Headers.ContainsKey("Origin") || r.Method == "OPTIONS") throw new Fail(403, "forbidden", "requests from web pages are not accepted");
 
         if (r.Method == "GET" && r.Path is "/" or "/health")
-            return (200, new JsonObject { ["ok"] = true, ["service"] = "New B Desk local Claude", ["engine"] = "claude -p", ["timeout_sec"] = TimeoutSec }, "");
+            return (200, new JsonObject { ["ok"] = true, ["service"] = Brand.Name + " local Claude", ["engine"] = "claude -p", ["timeout_sec"] = TimeoutSec }, "");
 
         var given = r.Headers.TryGetValue("x-api-key", out var k) ? k
             : r.Headers.TryGetValue("Authorization", out var a) && a.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? a[7..].Trim() : "";
@@ -422,7 +422,7 @@ public sealed class LocalClaude : IDisposable
     /// <summary>给 claude 一个空文件夹当工作目录，免得它去读别处的项目说明。</summary>
     static string WorkDir()
     {
-        var d = Path.Combine(Path.GetTempPath(), "DeskHub-claude");
+        var d = Path.Combine(Path.GetTempPath(), Brand.Id + "-claude");
         Directory.CreateDirectory(d);
         return d;
     }

@@ -1,0 +1,50 @@
+<Project>
+  <!--
+    版本差异只放在 Edition 文件夹的两个文件里：本文件（编译开关、程序名）和 Edition.cs（名字标识、工具条按钮、分区表、可选项）。
+    专用版只改这两个文件，合并通用版时其余文件直接收。
+
+    可选功能：false 就连源文件一起不编译。命令行也能临时改，例如
+      dotnet build -p:FeatArchive=false
+      dotnet build -p:AllFeaturesOff=true   （所有可选功能全关，发版前检查能不能编译过）
+    依赖：自动归档要有事项分类和流转（FeatFlow）；AI 识别行程要有日历（FeatCalendar），组合不对编译时报错。
+    一直保留、不能关的：分区、时钟、工具条、布局保存和恢复、多语言、设置、计算器、截图、文件查找、密码箱。
+  -->
+  <PropertyGroup>
+    <!-- 程序文件名（不带 .exe），要和 Edition.cs 里 Brand.Id 一致 -->
+    <AssemblyName>DeskHub</AssemblyName>
+    <Product>New B Desk</Product>
+    <AssemblyTitle>New B Desk</AssemblyTitle>
+    <!-- 安装包文件名前缀：New_B_Desk_Setup_版本号.exe -->
+    <SetupFilePrefix>New_B_Desk_Setup</SetupFilePrefix>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AllFeaturesOff)' == 'true'">
+    <FeatArchive>false</FeatArchive>
+    <FeatLocalClaude>false</FeatLocalClaude>
+    <FeatTripAi>false</FeatTripAi>
+    <FeatVaultApi>false</FeatVaultApi>
+    <FeatHotkeys>false</FeatHotkeys>
+    <FeatBalloon>false</FeatBalloon>
+    <FeatFlow>false</FeatFlow>
+    <FeatCalendar>false</FeatCalendar>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- 自动归档（冷却区到期的文件移到归档文件夹） -->
+    <FeatArchive Condition="'$(FeatArchive)' == ''">true</FeatArchive>
+    <!-- 本机 Claude 小服务（127.0.0.1 上转给 claude -p） -->
+    <FeatLocalClaude Condition="'$(FeatLocalClaude)' == ''">true</FeatLocalClaude>
+    <!-- AI 识别行程（截图、订单文字丢到日历上识别） -->
+    <FeatTripAi Condition="'$(FeatTripAi)' == ''">true</FeatTripAi>
+    <!-- 密码箱对外接口（本机其他程序经确认后取账号密码） -->
+    <FeatVaultApi Condition="'$(FeatVaultApi)' == ''">true</FeatVaultApi>
+    <!-- 全局快捷键 -->
+    <FeatHotkeys Condition="'$(FeatHotkeys)' == ''">true</FeatHotkeys>
+    <!-- 托盘气泡通知 -->
+    <FeatBalloon Condition="'$(FeatBalloon)' == ''">true</FeatBalloon>
+    <!-- 事项分类和流转（今天 / 进行中 / 冷却区、按事项分、拖动学规则） -->
+    <FeatFlow Condition="'$(FeatFlow)' == ''">true</FeatFlow>
+    <!-- 日历和定时便签（日历、行程提醒、备忘录便签） -->
+    <FeatCalendar Condition="'$(FeatCalendar)' == ''">true</FeatCalendar>
+  </PropertyGroup>
+</Project>

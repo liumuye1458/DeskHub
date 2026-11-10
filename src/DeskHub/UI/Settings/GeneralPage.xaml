@@ -1,0 +1,35 @@
+<UserControl x:Class="DeskHub.UI.Settings.GeneralPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 常规；日历那一段在 CalendarSection（编译开关 FeatCalendar） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222" Margin="0,0,0,10">常规</TextBlock>
+    <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+      <TextBlock Text="界面语言" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <ComboBox x:Name="LangBox" Width="220" Height="28" VerticalContentAlignment="Center"/>
+      <TextBlock x:Name="LangHint" Foreground="#999" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" Text="改了以后重启生效"/>
+    </StackPanel>
+    <CheckBox x:Name="HideIcons" Style="{StaticResource Toggle}" Margin="0,8" Content="隐藏系统自带的桌面图标（由分区来显示；退出本工具后自动恢复）"/>
+    <CheckBox x:Name="AutoStart" Style="{StaticResource Toggle}" Margin="0,8" Content="开机自动启动"/>
+    <CheckBox x:Name="ShowSeconds" Style="{StaticResource Toggle}" Margin="0,8" Content="时钟显示秒（会每秒刷新一次）"/>
+    <StackPanel Orientation="Horizontal" Margin="0,8">
+      <TextBlock Text="时钟下面的一行字" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <TextBox x:Name="ClockNote" Width="300" Height="28" MaxLength="40" VerticalContentAlignment="Center" Style="{StaticResource WinTextBox}"/>
+    </StackPanel>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,0,0,0" TextWrapping="Wrap" Text="例如店名、直播间口号。空着就不显示；最长和上面的时区那一行一样宽，超出的显示省略号。"/>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap">时钟的时区和 12/24 小时制跟随 Windows 设置（设置 → 时间和语言），在那里改了会立刻生效。</TextBlock>
+    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+      <TextBlock Text="桌面块的底色" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <Button x:Name="LookBtn" Content="调底色深浅…" Style="{StaticResource BtnW}"/>
+    </StackPanel>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Text="分区、日历、工具条的半透明底色，拖动时桌面上马上变。按壁纸各记一份，换回调过的壁纸自动恢复。也可以在分区或日历的标题栏上按住 Ctrl 滚滚轮，或者右键 →“底色深浅…”，还能单独调某一块。"/>
+    <CheckBox x:Name="Glass" Style="{StaticResource Toggle}" Margin="0,10,0,0" Content="毛玻璃底：透出模糊的壁纸（Windows 11 效果最好；电脑比较卡时可以关掉）"/>
+
+    <ContentControl x:Name="CalendarHost" Focusable="False"/>
+
+    <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+      <Button x:Name="Layouts" Content="布局：保存 / 切换 / 导出 / 导入…" Style="{StaticResource BtnW}" Margin="0,0,10,0"/>
+      <Button x:Name="ResetLayout" Content="恢复默认布局" Style="{StaticResource BtnW}"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

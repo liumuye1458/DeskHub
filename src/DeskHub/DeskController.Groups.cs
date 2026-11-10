@@ -232,20 +232,22 @@ public sealed partial class DeskController
     }
 
     // ================= 摆法 =================
-    /// <summary>每种摆法的盒子分法。A 不合并；B 左边软件+文件夹（加自建分区），右边今天/进行中/冷却区；C 全部一个盒子。</summary>
+    /// <summary>
+    /// 每种摆法的盒子分法（按 Edition.Fences 的左右边）。A 不合并；B 左边一个盒子（左边的固定分区 + 自建分区），右边一个盒子；
+    /// C 全部一个盒子（右边的在前）。只有一个分区的那边不成盒子。
+    /// </summary>
     List<FenceGroup> GroupsFor(string scheme)
     {
         var customs = Cfg.CustomFences.Select(c => c.Id).ToList();
-        return scheme switch
+        var left = Specs.Where(s => s.Side == FenceSide.Left).Select(s => s.Key).Concat(customs).ToList();
+        var right = Specs.Where(s => s.Side == FenceSide.Right).Select(s => s.Key).ToList();
+        var groups = scheme switch
         {
-            "B" => new()
-            {
-                new FenceGroup { Keys = new List<string> { "apps", "folders" }.Concat(customs).ToList(), Active = "apps" },
-                new FenceGroup { Keys = { "today", "active", "cold" }, Active = "today" },
-            },
-            "C" => new() { new FenceGroup { Keys = new List<string> { "today", "active", "cold", "apps", "folders" }.Concat(customs).ToList(), Active = "today" } },
-            _ => new(),
+            "B" => new List<List<string>> { left, right },
+            "C" => new List<List<string>> { right.Concat(left).ToList() },
+            _ => new List<List<string>>(),
         };
+        return groups.Where(g => g.Count > 1).Select(g => new FenceGroup { Keys = g, Active = g[0] }).ToList();
     }
 
     /// <summary>换成某种摆法：先按它合并好盒子，再按它的规则排版。</summary>

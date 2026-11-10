@@ -31,7 +31,7 @@ public partial class App : Application
             if (e.Args[i] == "--sandbox") sandbox = Path.GetFullPath(e.Args[i + 1]);
 
         // 换语言重启时（--restart），等上一个进程退出再继续
-        _single = new Mutex(false, sandbox == null ? @"Local\DeskHub.Single" : @"Local\DeskHub.Sandbox");
+        _single = new Mutex(false, sandbox == null ? Brand.SingleMutex : Brand.SandboxMutex);
         bool first;
         try { first = _single.WaitOne(e.Args.Contains("--restart") ? 15000 : 0); }
         catch (AbandonedMutexException) { first = true; }
@@ -39,7 +39,7 @@ public partial class App : Application
         // 安装 / 卸载程序要关掉正在运行的本工具时，会触发这个信号：正常退出（恢复系统桌面图标、保存状态）
         if (sandbox == null)
         {
-            _exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\DeskHub.Exit");
+            _exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, Brand.ExitSignal);
             ThreadPool.RegisterWaitForSingleObject(_exitSignal, (_, _) => Dispatcher.BeginInvoke(Quit), null, -1, true);
         }
 
@@ -69,7 +69,7 @@ public partial class App : Application
         for (int i = 0; i < e.Args.Length - 1; i++) if (e.Args[i] == "--lang") lang = e.Args[i + 1];
         L.Init(lang ?? AppConfig.PeekLanguage());
         L.HookWindows();
-        // 专用版 HOTA DESK 开着时不能同时开（都会接管桌面、抢快捷键）：问用户要不要关掉它
+        // 另一个版本开着时不能同时开（都会接管桌面、抢快捷键）：问用户要不要关掉它
         if (sandbox == null && !Core.OtherEdition.MakeWay()) { Shutdown(); return; }
 
         var cfg = AppConfig.Load();
@@ -84,10 +84,12 @@ public partial class App : Application
         _ctl.Notify += msg =>
         {
             if (_scripted) { _notes.Add("提示: " + msg); return; } // 自动测试时不弹系统通知
-            _tray?.ShowBalloonTip(4000, "New B Desk", msg, Forms.ToolTipIcon.Info);
+#if FEAT_BALLOON
+            _tray?.ShowBalloonTip(4000, Brand.Name, msg, Forms.ToolTipIcon.Info);
+#endif
         };
         _ctl.RequestSettings += () => OpenSettings("rules");
-        _ctl.RequestArchiveLog += () => OpenSettings("flow");
+        _ctl.RequestMoveLog += () => OpenSettings("log");
         _ctl.RequestPage += OpenSettings;
         _ctl.RequestLayouts += OpenLayouts;
         _tools = new ToolHub(_ctl, sandbox != null);
@@ -95,8 +97,6 @@ public partial class App : Application
         BuildTray(sandbox != null);
         _ctl.Start();
         _tools.Start();
-        if (_tools.HotkeyErrors.Count > 0)
-            _ctl.ShowNote(string.Join("；", _tools.HotkeyErrors.Select(kv => L.F("{0}快捷键{1}", ToolHub.Actions.First(a => a.Key == kv.Key).Name, kv.Value))) + L.T("。可在设置 → 快捷键里修改"));
 
         // 启动时加载图标等用过的临时内存，15 秒后还给系统
         var trim = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.ApplicationIdle) { Interval = TimeSpan.FromSeconds(15) };
@@ -128,15 +128,19 @@ public partial class App : Application
         menu.Items.Add(L.T("文件查找"), null, (_, _) => _tools!.Search());
         menu.Items.Add(L.T("截图"), null, (_, _) => _tools!.Shot(350)); // 等菜单收起再截
         menu.Items.Add(L.T("计算器"), null, (_, _) => _tools!.Calc());
+#if FEAT_CALENDAR
         menu.Items.Add(L.T("备忘录"), null, (_, _) => _tools!.Memo());
+#endif
         menu.Items.Add(L.T("密码箱"), null, (_, _) => _tools!.Vault());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(L.T("新建分区…"), null, (_, _) => _ctl!.NewFence());
         menu.Items.Add(L.T("排列桌面"), null, (_, _) => _tools!.Arrange(1));
         menu.Items.Add(L.T("换个摆法…"), null, (_, _) => _ctl!.PickScheme());
         menu.Items.Add(L.T("设置…"), null, (_, _) => OpenSettings("rules"));
+#if FEAT_ARCHIVE
         menu.Items.Add(L.T("立即检查归档"), null, (_, _) => _ctl!.CheckArchive(userAsked: true));
-        menu.Items.Add(L.T("归档记录 / 撤回…"), null, (_, _) => OpenSettings("flow"));
+#endif
+        menu.Items.Add(L.T("移动记录 / 撤回…"), null, (_, _) => OpenSettings("log"));
         menu.Items.Add(new Forms.ToolStripSeparator());
         var hide = new Forms.ToolStripMenuItem(L.T("隐藏系统桌面图标")) { CheckOnClick = true, Checked = _ctl!.Cfg.HideSystemIcons, Enabled = !sandbox };
         hide.CheckedChanged += (_, _) => _ctl.SetHideSystemIcons(hide.Checked);
@@ -150,7 +154,7 @@ public partial class App : Application
         _tray = new Forms.NotifyIcon
         {
             Icon = new System.Drawing.Icon(icon),
-            Text = sandbox ? L.T("New B Desk（沙盒）") : "New B Desk",
+            Text = sandbox ? L.F("{0}（沙盒）", Brand.Name) : Brand.Name,
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -168,8 +172,12 @@ public partial class App : Application
         _layouts.Popup();
     }
 
+#if FEAT_CALENDAR
     UI.TripEditor? _calEd;
+#endif
+#if FEAT_TRIPAI
     UI.TripImportWindow? _calImp;
+#endif
 
     void OpenSettings(string page)
     {
@@ -225,27 +233,33 @@ public partial class App : Application
                     case "wait": await Task.Delay(TimeSpan.FromSeconds(double.Parse(parts[1]))); break;
                     case "snapshot": _ctl!.Snapshot(parts[1]); break;
                     case "touch": File.WriteAllText(Path.Combine(sandbox, "Desktop", parts[1]), ""); break;
+#if FEAT_FLOW
                     case "topic":
                         var it = _ctl!.Find(Path.Combine(sandbox, "Desktop", parts[1]));
                         if (it == null) { report.Add($"找不到 {parts[1]}"); break; }
                         _ctl.MoveToTopic(it, parts[2], Windows.OfType<FenceWindow>().First(f => f.Key == "active"));
                         break;
+#endif
                     case "place": // 模拟把文件拖到另一个分区
                         var pi = _ctl!.Find(Path.Combine(sandbox, "Desktop", parts[1]));
                         if (pi == null) { report.Add($"找不到 {parts[1]}"); break; }
                         _ctl.PlaceItem(pi, Windows.OfType<FenceWindow>().First(f => f.Key == parts[2]), null);
                         report.Add($"{parts[1]} → {_ctl.Find(pi.Path)?.Zone}");
                         break;
+#if FEAT_FLOW
                     case "learn": // 模拟点"好，记住"
                         foreach (var t in Windows.OfType<LearnToast>().ToList()) t.Yes.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                         break;
+#endif
+#if FEAT_ARCHIVE
                     case "archive":
                         _ctl!.Cfg.ArchiveConfirmed = true;
                         _ctl.CheckArchive();
                         break;
+#endif
                     case "undo":
-                        var last = _ctl!.State.ArchiveLog.Where(r => !r.Undone).Select(r => r.Batch).LastOrDefault();
-                        if (last != null) { var (ok, fail) = _ctl.Undo(last); report.Add($"撤回 {ok} 成功 {fail} 失败"); }
+                        var last = _ctl!.Mover.LastBatch();
+                        if (last != null) { var (ok, fail) = _ctl.UndoMove(last); report.Add($"撤回 {ok} 成功 {fail} 失败"); }
                         break;
                     case "dump":
                         report.AddRange(Windows.OfType<FenceWindow>().Select(f => $"{f.Key}: {f.CountText.Text}"));
@@ -303,7 +317,7 @@ public partial class App : Application
                     case "realshot": // realshot 文件：真实截屏（系统的模糊效果画不进 RenderTargetBitmap）。
                         // 先铺一层显示壁纸的置顶窗口，再让分区临时浮到它上面，截下分区所在的区域，然后全部还原
                         {
-                            var desks = Windows.OfType<Window>().Where(w => (w is FenceWindow or DockWindow or CalendarWidget) && w.IsVisible).ToList();
+                            var desks = Windows.OfType<Window>().Where(w => (w is FenceWindow or DockWindow || w == _ctl!.TestBlock("calendar")) && w.IsVisible).ToList();
                             var wa = SystemParameters.WorkArea;
                             var wallFile = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop", "WallPaper", null) as string;
                             if (string.IsNullOrEmpty(wallFile) || !File.Exists(wallFile))
@@ -513,6 +527,7 @@ public partial class App : Application
                             }
                         }
                         break;
+#if FEAT_CALENDAR
                     case "cal": // 日历：today 日期 / open / hide / size 宽 高 / view 年-月 / sel 日期 日期 / hover 日期 / edit 日期 / edshot 文件 / trip 日期|文字|提醒 / shot 文件 / status / terms 年 / lunar 日期 / remind 日期 / set 项 0|1
                         {
                             var a2 = parts.Length > 2 ? parts[2] : "";
@@ -534,6 +549,7 @@ public partial class App : Application
                                 case "tripj": Core.TripStore.Put(System.Text.Json.JsonSerializer.Deserialize<Core.Trip>(a2)!, null); break;
                                 case "hl": cw!.TestHl(Dt(a2)); break;
                                 case "trips": report.Add("trips → " + string.Join(" / ", Core.TripStore.Trips.Select(t => $"{t.Date} {t.Display}"))); break;
+#if FEAT_TRIPAI
                                 // 智能识别：import 打开 / imptext 文字 / impimg 图片路径 / imprun 识别 / impstatus / impshot 文件 / impadd 加入
                                 case "import": _calImp = cw!.TestImport(); await Task.Delay(300); break;
                                 case "imptext": _calImp!.TestText(a2); break;
@@ -551,6 +567,7 @@ public partial class App : Application
                                         report.Add($"ai → {cfg.AiUrl} {cfg.AiModel} key={(Core.Secret.Unprotect(cfg.AiKey) == (f.Length > 2 ? f[2] : "") ? "ok" : "BAD")}");
                                     }
                                     break;
+#endif
                                 case "shot": await Task.Delay(300); RenderWindow(cw!, a2); break;
                                 case "status": report.Add("cal status → " + cw!.TestStatus); break;
                                 case "terms": report.Add($"terms {a2}: " + string.Join(" ", Core.ChinaCal.TermsOf(int.Parse(a2)).Select(kv => $"{kv.Key:MM-dd}{kv.Value}"))); break;
@@ -625,6 +642,8 @@ public partial class App : Application
                             }
                         }
                         break;
+#endif
+#if FEAT_LOCALCLAUDE
                     case "lc": // 本机 Claude 小服务：lc on 端口|口令 / off / status / shot 文件（设置页滚到底截图）
                         switch (parts[1])
                         {
@@ -638,11 +657,12 @@ public partial class App : Application
                             case "status": report.Add($"lc status → {(_tools!.LocalClaude != null ? "running " + _tools.LocalClaude.Port : "stopped " + _tools.LocalClaudeError)} claude={Core.LocalClaude.FindClaude() ?? "NOT FOUND"}"); break;
                             case "shot":
                                 OpenSettings("ai"); await Task.Delay(500);
-                                ((System.Windows.Controls.ScrollViewer)_settings!.FindName("PageAi")).ScrollToEnd(); await Task.Delay(300);
+                                _settings!.PageOf("ai")?.ScrollToEnd(); await Task.Delay(300);
                                 RenderWindow(_settings, parts[2]); _settings.Close();
                                 break;
                         }
                         break;
+#endif
                     case "look": // 底色深浅：get / set 0.5 / own 键 0.6|- / wall 假壁纸名 / nudge 键 1|-1 / pop 键 文件 / snap 文件 [壁纸图]
                         var la = line.Split(' ', StringSplitOptions.RemoveEmptyEntries); // 路径里没有空格
                         switch (la[1])
@@ -668,6 +688,7 @@ public partial class App : Application
                         UI.BgLook.Save();
                         report.Add($"look → wall={UI.BgLook.Wallpaper} remembered={UI.BgLook.Remembered} global={UI.BgLook.Global} cal={UI.BgLook.Of("calendar")} active={UI.BgLook.Of("active")}");
                         break;
+#if FEAT_VAULTAPI
                     case "vaultapi": // vaultapi on|off / answer once|always|deny / shot 文件
                         var va = parts[1];
                         if (va is "on" or "off") { _ctl!.Cfg.VaultApi = va == "on"; _tools!.ApplyVaultApi(); }
@@ -685,6 +706,7 @@ public partial class App : Application
                             report.Add("api → " + (await outTask).Trim() + (await errTask).Trim());
                         }
                         break;
+#endif
                     case "snap": // snap 分区key或标题 x y：模拟拖到这里，报告吸附后的位置
                         {
                             var sv = parts[2].Split(' ').Select(double.Parse).ToArray();
@@ -733,13 +755,59 @@ public partial class App : Application
                         _ctl!.NewFenceNamed(parts[1]);
                         break;
                     case "nav": // 设置窗口切换分页
-                        if (_settings != null) ((System.Windows.Controls.RadioButton)_settings.FindName(parts[1])).IsChecked = true;
+                        _settings?.ShowPage(parts[1].StartsWith("Nav") ? parts[1][3..].ToLowerInvariant() : parts[1]); // 老脚本写 NavGeneral，新的写 general
                         break;
-                    case "edition": // edition 测试名：假装“测试名”是另一个版本，走一遍关掉它的流程（不弹窗）
+                    case "edition": // edition ids：本版本的标识 / edition 测试名：假装“测试名”是另一个版本，走一遍关掉它的流程（不弹窗）
+                        if (parts[1] == "ids")
+                        {
+                            report.Add($"edition ids → exe={Path.GetFileName(Environment.ProcessPath)} data={AppConfig.DataDir} search={Search.IndexerHost.PipeName} other={Brand.Other.Name}");
+                            break;
+                        }
                         {
                             var t0 = System.Diagnostics.Stopwatch.StartNew();
                             var ok = Core.OtherEdition.MakeWay($@"Local\{parts[1]}.Single", $@"Local\{parts[1]}.Exit", null, ask: false);
                             report.Add($"edition {parts[1]} → {(ok ? "start" : "blocked")} {t0.Elapsed.TotalSeconds:0.0}s");
+                        }
+                        break;
+                    case "pipetest": // pipetest：按索引程序的建法开一个临时管道（不限实例、同步），用 client.ps1 从本机和网络路径各连一次
+                        {
+                            var pn = Brand.Id + ".PipeTest." + Environment.ProcessId;
+                            var th = new Thread(() =>
+                            {
+                                for (int k = 0; k < 2; k++)
+                                {
+                                    try
+                                    {
+                                        using var sp = Interop.LocalPipe.Create(pn, System.IO.Pipes.NamedPipeServerStream.MaxAllowedServerInstances, false, 4096, 4096);
+                                        sp.WaitForConnection();
+                                        using var rd = new StreamReader(sp, leaveOpen: true); using var wr = new StreamWriter(sp, leaveOpen: true) { AutoFlush = true };
+                                        wr.WriteLine("echo " + rd.ReadLine());
+                                    }
+                                    catch { }
+                                }
+                            }) { IsBackground = true };
+                            th.Start();
+                            var ps = new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+                            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(sandbox, "client.ps1"), pn, "hello" }) ps.ArgumentList.Add(a);
+                            using var pr = System.Diagnostics.Process.Start(ps)!;
+                            var o = await pr.StandardOutput.ReadToEndAsync();
+                            await pr.WaitForExitAsync();
+                            report.Add("pipetest → " + o.Trim());
+                        }
+                        break;
+                    case "usbdisks": // usbdisks：报告每个本地磁盘是不是 USB 接的
+                        report.Add("usbdisks → " + string.Join(" ", DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed).Select(d => d.Name + "=" + Search.UsbDisk.BusType(d.Name))));
+                        break;
+                    case "dockapp": // dockapp 路径：像拖上来一样加一个软件按钮
+                        _tools!.TestAddApp(string.Join(' ', parts.Skip(1)));
+                        break;
+                    case "dockopen": // dockopen 路径：点软件按钮，报告结果和工具条旁的轻提示
+                        {
+                            var ap = string.Join(' ', parts.Skip(1));
+                            var r = Interop.AppLauncher.Open(ap, out var aerr);
+                            if (r == Interop.AppLauncher.Result.RunningNoWindow) _tools!.OpenApp(ap); // 走一遍真的提示
+                            await Task.Delay(500);
+                            report.Add($"dockopen → {r} {aerr} hint={_tools!.TestDockHint}");
                         }
                         break;
                     case "quit":File.WriteAllLines(Path.Combine(sandbox, "report.txt"), report.Concat(_notes)); Quit(); return;

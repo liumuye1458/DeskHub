@@ -1,0 +1,39 @@
+<UserControl x:Class="DeskHub.UI.Settings.FlowPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 流转（事项分类和流转，编译开关 FeatFlow）；归档那一段在 ArchiveSection（编译开关 FeatArchive） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">文件怎么流转</TextBlock>
+    <WrapPanel Margin="0,12,0,0">
+      <Border BorderBrush="#E8E8E8" BorderThickness="1" CornerRadius="6" Padding="14,8" MinWidth="110">
+        <StackPanel><TextBlock Text="今天" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="当天放上桌面" Foreground="#999" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+      </Border>
+      <TextBlock Text="→" Foreground="#BBB" VerticalAlignment="Center" Margin="8,0"/>
+      <Border BorderBrush="#E8E8E8" BorderThickness="1" CornerRadius="6" Padding="14,8" MinWidth="110">
+        <StackPanel><TextBlock Text="进行中" FontWeight="Bold" HorizontalAlignment="Center"/><TextBlock Text="按事项分" Foreground="#999" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+      </Border>
+      <TextBlock Text="→" Foreground="#BBB" VerticalAlignment="Center" Margin="8,0"/>
+      <Border BorderBrush="#E8E8E8" BorderThickness="1" CornerRadius="6" Padding="14,8" MinWidth="110">
+        <StackPanel>
+          <TextBlock Text="冷却区" FontWeight="Bold" HorizontalAlignment="Center"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+            <TextBox x:Name="ColdDays" Width="40" TextAlignment="Center" Style="{StaticResource WinTextBox}" Padding="2,1" Foreground="#07C255" FontWeight="Bold"/>
+            <TextBlock Text=" 天没碰" Foreground="#999" FontSize="12" VerticalAlignment="Center"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+      <TextBlock x:Name="ArchiveArrow" Text="→" Foreground="#BBB" VerticalAlignment="Center" Margin="8,0"/>
+      <Border x:Name="ArchiveBox" BorderBrush="#E8E8E8" BorderThickness="1" CornerRadius="6" Padding="14,8" MinWidth="110">
+        <StackPanel>
+          <TextBlock Text="归档" FontWeight="Bold" HorizontalAlignment="Center"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+            <TextBox x:Name="ArchiveDays" Width="40" TextAlignment="Center" Style="{StaticResource WinTextBox}" Padding="2,1" Foreground="#07C255" FontWeight="Bold"/>
+            <TextBlock Text=" 天没碰" Foreground="#999" FontSize="12" VerticalAlignment="Center"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </WrapPanel>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap">“碰过”指修改过、打开过（用任何程序打开都算），或刚放上桌面。快捷方式、文件夹、钉住的文件、公用桌面上的文件不参与流转。</TextBlock>
+    <ContentControl x:Name="ArchiveHost" Focusable="False"/>
+  </StackPanel>
+</UserControl>

@@ -9,6 +9,7 @@ public partial class ArchiveConfirmWindow : Window
     public ArchiveConfirmWindow(List<DesktopItem> due, AppConfig cfg)
     {
         InitializeComponent();
+        Title = L.F("{0} · 归档确认", Brand.Name);
         var month = DateTime.Now.ToString("yyyy-MM");
         Head.Text = L.F("有 {0} 个文件已经 {1} 天没碰过，要移出桌面吗？", due.Count, cfg.ArchiveDays);
         Sub.Text = L.F("文件会移到 {0} 下按事项分好的文件夹里，不会删除；随时可以在“归档记录”里一键撤回。", Path.Combine(cfg.ArchiveRoot, month) + "\\");

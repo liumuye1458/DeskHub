@@ -25,21 +25,26 @@ public sealed class ItemMeta
     public DateTime? PlacedAt { get; set; }
 }
 
-/// <summary>一次归档移动的记录，用于撤回。</summary>
-public sealed class ArchiveRecord
+/// <summary>一次移动的记录（归档、分区标题栏按钮挪走的文件等），用于撤回。见 FileMover。</summary>
+public sealed class MoveRecord
 {
     public DateTime Time { get; set; }
     public string From { get; set; } = "";
     public string To { get; set; } = "";
-    public string Topic { get; set; } = "";
+    /// <summary>挪走时属于哪个事项（撤回时还原；没有事项分类时为空）。</summary>
+    public string? Topic { get; set; }
     public string Batch { get; set; } = "";
+    /// <summary>这批是干什么的，显示在“移动记录”里（例如“归档”）。以前的记录没有这一项，都是归档。</summary>
+    public string? Label { get; set; }
     public bool Undone { get; set; }
 }
 
 public sealed class StateStore
 {
     public Dictionary<string, ItemMeta> Items { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    public List<ArchiveRecord> ArchiveLog { get; set; } = new();
+    /// <summary>移动记录（存盘的名字沿用以前的 ArchiveLog，老数据照样读得出来）。</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("ArchiveLog")]
+    public List<MoveRecord> MoveLog { get; set; } = new();
 
     static string FilePath => Path.Combine(AppConfig.DataDir, "state.json");
 
@@ -68,7 +73,7 @@ public sealed class StateStore
         {
             // 撤回记录只留 180 天，避免文件无限增长
             var cutoff = DateTime.Now.AddDays(-180);
-            ArchiveLog.RemoveAll(r => r.Time < cutoff);
+            MoveLog.RemoveAll(r => r.Time < cutoff);
             AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, AppConfig.Json));
         }
     }

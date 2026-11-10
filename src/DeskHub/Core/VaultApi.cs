@@ -66,7 +66,7 @@ public sealed class VaultApiServer : IDisposable
 {
     public const int Version = 1;
     static string Sid => WindowsIdentity.GetCurrent().User!.Value;
-    public static string PipeNameFor(bool sandbox) => "DeskHub.Vault." + Sid + (sandbox ? ".sandbox" : "");
+    public static string PipeNameFor(bool sandbox) => Brand.Id + ".Vault." + Sid + (sandbox ? ".sandbox" : "");
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -97,12 +97,8 @@ public sealed class VaultApiServer : IDisposable
         {
             try
             {
-                var sec = new PipeSecurity();
-                sec.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance, AccessControlType.Allow));
-                sec.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkSid, null), PipeAccessRights.FullControl, AccessControlType.Deny));
-                // 只开一个实例：一次只处理一个请求
-                using var pipe = NamedPipeServerStreamAcl.Create(_pipeName, PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 8192, 8192, sec);
+                // 只开一个实例：一次只处理一个请求；只给本机本用户（见 LocalPipe）
+                using var pipe = Interop.LocalPipe.Create(_pipeName, 1, true, 8192, 8192);
                 await pipe.WaitForConnectionAsync(ct);
                 await Serve(pipe, ct);
             }

@@ -31,8 +31,10 @@ public sealed class CalendarWidget : Window
     public event Action? Moved;
     /// <summary>菜单里点了“隐藏日历”。</summary>
     public event Action? HideRequested;
+#if FEAT_TRIPAI
     /// <summary>智能识别窗口里点了“去配置 AI”。</summary>
     public event Action? AiSettingsRequested;
+#endif
 
     enum ListMode { None, Right, Below }
 
@@ -62,7 +64,9 @@ public sealed class CalendarWidget : Window
     readonly Popup _tip = new() { AllowsTransparency = true, Placement = PlacementMode.Relative, StaysOpen = true };
     readonly TextBlock _tipText = new() { FontSize = 12, LineHeight = 19, Foreground = B("#333333") };
     TripEditor? _editor;
+#if FEAT_TRIPAI
     TripImportWindow? _import;
+#endif
 
     public CalendarWidget(AppConfig cfg)
     {
@@ -156,6 +160,7 @@ public sealed class CalendarWidget : Window
         var listPanel = new DockPanel { Margin = new Thickness(12, 8, 10, 6) };
         DockPanel.SetDock(listHead, Dock.Top);
         listPanel.Children.Add(listHead);
+#if FEAT_TRIPAI
         // 底下一块虚线框：点它、往日历上拖截图、Ctrl+V 都能智能识别
         var drop = new Grid { Margin = new Thickness(0, 6, 0, 0), Cursor = Cursors.Hand, Background = Brushes.Transparent, ToolTip = L.T("把飞猪 / 携程订单截图、聊天记录拖到日历上，或者在日历上按 Ctrl+V，自动找出哪天要干什么") };
         drop.Children.Add(new Rectangle { Stroke = B("#66FFFFFF"), StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 4, 3 }, RadiusX = 5, RadiusY = 5 });
@@ -165,6 +170,7 @@ public sealed class CalendarWidget : Window
         drop.MouseLeftButtonUp += (_, _) => OpenImport(null);
         DockPanel.SetDock(drop, Dock.Bottom);
         listPanel.Children.Add(drop);
+#endif
         listPanel.Children.Add(new ScrollViewer { Content = _items, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden });
         listPanel.Effect = Res<Effect>("TextShadow");
         _listBox = new Border { BorderBrush = Res<Brush>("FenceLine"), Child = listPanel };
@@ -222,12 +228,15 @@ public sealed class CalendarWidget : Window
         Interop.Backdrop.Attach(this, glass => root.CornerRadius = new CornerRadius(glass ? 8 : 6));
         SizeChanged += (_, _) => Relayout();
         KeyDown += OnKey;
+#if FEAT_TRIPAI
         // 截图、文字、图片文件拖到日历上 → 智能识别
         AllowDrop = true;
         DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.Bitmap) || e.Data.GetDataPresent(DataFormats.UnicodeText) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
         Drop += (_, e) => { OpenImport(e.Data); e.Handled = true; };
+        Closed += (_, _) => _import?.Close();
+#endif
         TripStore.Changed += Render;
-        Closed += (_, _) => { TripStore.Changed -= Render; _editor?.Close(); _import?.Close(); _tip.IsOpen = false; };
+        Closed += (_, _) => { TripStore.Changed -= Render; _editor?.Close(); _tip.IsOpen = false; };
         Relayout();
     }
 
@@ -537,7 +546,13 @@ public sealed class CalendarWidget : Window
         _cards.Clear();
         if (_mode == ListMode.None) return;
         if (TripStore.Upcoming(Today).Any()) { RenderGroups(); return; }
-        _items.Children.Add(new TextBlock { Text = L.T("还没有行程。点日历上任意一天写一句；也可以把订单截图、聊天记录拖进来自动识别。"), Foreground = Res<Brush>("TextSub"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, LineHeight = 18, Margin = new Thickness(0, 4, 0, 0) });
+        _items.Children.Add(new TextBlock {
+#if FEAT_TRIPAI
+            Text = L.T("还没有行程。点日历上任意一天写一句；也可以把订单截图、聊天记录拖进来自动识别。"),
+#else
+            Text = L.T("还没有行程。点日历上任意一天写一句。"),
+#endif
+            Foreground = Res<Brush>("TextSub"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, LineHeight = 18, Margin = new Thickness(0, 4, 0, 0) });
     }
 
     /// <summary>
@@ -635,6 +650,7 @@ public sealed class CalendarWidget : Window
         ed.ShowBeside(new Rect(Left, Top, ActualWidth, ActualHeight), Top + cellTop - 16, DeskController.WorkAreaOf(this));
     }
 
+#if FEAT_TRIPAI
     /// <summary>打开智能识别窗口（data：拖进来 / 粘贴的东西，可以没有）。已经开着就把东西加进去。</summary>
     void OpenImport(IDataObject? data)
     {
@@ -652,6 +668,7 @@ public sealed class CalendarWidget : Window
         else _import.Activate();
         if (data != null) _import.Take(data);
     }
+#endif
 
     /// <summary>底色深浅里这一块的键（和布局里的键一样）。</summary>
     const string LookKey = "calendar";
@@ -670,7 +687,9 @@ public sealed class CalendarWidget : Window
         Add(L.T("回到今天"), GoToday);
         Add(L.T("底色深浅…"), () => LookPopup.Open(LookKey, L.T("日历"), this));
         Add(L.T("＋ 记一笔"), () => OpenEditor(Today));
+#if FEAT_TRIPAI
         Add("✨ " + L.T("智能识别（截图 / 聊天记录）…"), () => OpenImport(null));
+#endif
         m.Items.Add(new Separator());
         Check(L.T("显示农历"), _cfg.CalLunar, v => _cfg.CalLunar = v);
         Check(L.T("显示中国节假日"), _cfg.CalChina, v => _cfg.CalChina = v);
@@ -692,10 +711,12 @@ public sealed class CalendarWidget : Window
             case Key.PageUp: Go(-1); e.Handled = true; break;
             case Key.PageDown: Go(1); e.Handled = true; break;
             case Key.Home: GoToday(); e.Handled = true; break;
+#if FEAT_TRIPAI
             case Key.V when Keyboard.Modifiers == ModifierKeys.Control:
                 try { OpenImport(Clipboard.GetDataObject()); } catch { OpenImport(null); }
                 e.Handled = true;
                 break;
+#endif
         }
     }
 
@@ -752,7 +773,9 @@ public sealed class CalendarWidget : Window
     internal void TestHover(DateTime d) { _hover = d; Render(); ShowTip(d); }
     internal TripEditor? TestEdit(DateTime d) { OpenEditor(d, TripStore.On(d).FirstOrDefault()); return _editor; }
     internal void TestHl(DateTime d) { _hl = TripStore.On(d).FirstOrDefault(); RenderCells(); HighlightList(); }
+#if FEAT_TRIPAI
     internal TripImportWindow? TestImport() { OpenImport(null); return _import; }
+#endif
     internal string TestStatus => new TextRange(_hint.ContentStart, _hint.ContentEnd).Text + (_tip.IsOpen ? " | " + new TextRange(_tipText.ContentStart, _tipText.ContentEnd).Text.Replace("\r\n", " / ") : "");
 }
 

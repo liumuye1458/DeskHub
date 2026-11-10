@@ -13,29 +13,30 @@ using Microsoft.Win32;
 namespace HotaSetup;
 
 /// <summary>
-/// New B Desk 安装 / 卸载程序（单个 exe，主程序打包在里面）。
-/// 装在当前用户目录（%LOCALAPPDATA%\Programs\New B Desk），不需要管理员权限：
+/// 安装 / 卸载程序（单个 exe，主程序打包在里面）。
+/// 装在当前用户目录（%LOCALAPPDATA%\Programs\产品名），不需要管理员权限：
 ///   开始菜单 + 桌面快捷方式、开机自启（可选）、“应用和功能”里能卸载。
 /// 命令行：
 ///   （无参数）                    安装界面
 ///   --uninstall                   卸载界面（安装目录里的 uninstall.exe 用）
 ///   --silent [--dir 目录]         静默安装；可加 --no-shortcuts --no-autostart --no-launch --no-register --no-close（测试用）
 ///   --uninstall --silent [--dir]  静默卸载
-/// 用户数据（%APPDATA%\DeskHub，含密码箱）默认保留，卸载时可勾选删除。
+/// 用户数据（%APPDATA%\程序标识，含密码箱）默认保留，卸载时可勾选删除。
+/// 名字、程序文件名、数据目录等标识都取自 DeskHub/Edition/Edition.cs 的 Brand，两个版本能装在同一台电脑上。
 /// </summary>
 static class Program
 {
-    public const string Name = "New B Desk";
-    public const string Exe = "DeskHub.exe";
-    const string RunName = "DeskHub";                       // 和主程序设置里的“开机自启”是同一个
-    const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\New B Desk";
+    public const string Name = DeskHub.Brand.Name;
+    public const string Exe = DeskHub.Brand.Exe;
+    const string RunName = DeskHub.Brand.Id;                 // 和主程序设置里的“开机自启”是同一个
+    const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + Name;
 
     public static readonly bool Zh = CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
     public static string T(string zh, string en) => Zh ? zh : en;
     public static string Version => Assembly.GetExecutingAssembly().GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
 
     public static string DefaultDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", Name);
-    public static string DataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskHub");
+    public static string DataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), DeskHub.Brand.Id);
     static string StartMenuLnk => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name + ".lnk");
     static string DesktopLnk => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Name + ".lnk");
 
@@ -106,7 +107,11 @@ static class Program
 
     public static void Install(Options o, Action<string> step)
     {
-        if (o.Close) { step(T("正在关闭正在运行的 New B Desk…", "Closing running New B Desk…")); CloseRunning(); }
+        // 不能和另一个版本装进同一个文件夹：卸载时会把整个文件夹删掉，连它一起删了
+        if (File.Exists(Path.Combine(o.Dir, DeskHub.Brand.Other.Process + ".exe")))
+            throw new InvalidOperationException(T($"{o.Dir} 里装着 {DeskHub.Brand.Other.Name}，两个不能装在同一个文件夹。请点“更改…”换个位置。",
+                                                  $"{DeskHub.Brand.Other.Name} is installed in {o.Dir}. Click Change… to pick another folder."));
+        if (o.Close) { step(T($"正在关闭正在运行的 {Name}…", $"Closing running {Name}…")); CloseRunning(); }
 
         step(T("正在复制文件…", "Copying files…"));
         if (CanWrite(o.Dir)) CopyFiles(o.Dir);
@@ -214,7 +219,7 @@ static class Program
     // ================= 卸载 =================
     public static void Uninstall(string dir, bool deleteData, bool close, bool selfDelete, Action<string> step)
     {
-        if (close) { step(T("正在关闭 New B Desk…", "Closing New B Desk…")); CloseRunning(); }
+        if (close) { step(T($"正在关闭 {Name}…", $"Closing {Name}…")); CloseRunning(); }
         step(T("正在删除快捷方式和注册信息…", "Removing shortcuts…"));
         foreach (var l in new[] { StartMenuLnk, DesktopLnk }) try { if (File.Exists(l)) File.Delete(l); } catch { }
         try
@@ -248,7 +253,7 @@ static class Program
     {
         var procs = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Exe));
         if (procs.Length == 0) return;
-        try { using var ev = EventWaitHandle.OpenExisting(@"Local\DeskHub.Exit"); ev.Set(); } catch { }
+        try { using var ev = EventWaitHandle.OpenExisting(DeskHub.Brand.ExitSignal); ev.Set(); } catch { }
         foreach (var p in procs)
         {
             try { if (!p.WaitForExit(10000)) { p.Kill(true); p.WaitForExit(3000); } } catch { }
@@ -342,7 +347,7 @@ sealed class InstallWindow : Window
     public InstallWindow()
     {
         var old = Program.Installed();
-        Program.Style(this, Program.T("安装 New B Desk", "Install New B Desk"));
+        Program.Style(this, Program.T($"安装 {Program.Name}", $"Install {Program.Name}"));
         _dir.Text = old?.Dir ?? Program.DefaultDir;
         _desk.Content = Program.T("创建桌面快捷方式", "Create desktop shortcut");
         _auto.Content = Program.T("开机自动启动", "Start with Windows");
@@ -386,7 +391,7 @@ sealed class InstallWindow : Window
             {
                 await Task.Run(() => Program.Install(o, s => Dispatcher.Invoke(() => _status.Text = s)));
                 _bar.Visibility = Visibility.Collapsed;
-                _status.Text = Program.T("安装完成。开始菜单和桌面上都有 New B Desk。", "Installed. New B Desk is in the Start menu.");
+                _status.Text = Program.T($"安装完成。开始菜单和桌面上都有 {Program.Name}。", $"Installed. {Program.Name} is in the Start menu.");
                 _status.Foreground = Program.Green;
                 _ok.Content = Program.T("完成", "Finish"); _ok.IsEnabled = true; _done = true;
             }
@@ -416,7 +421,7 @@ sealed class UninstallWindow : Window
 {
     public UninstallWindow(string dir)
     {
-        Program.Style(this, Program.T("卸载 New B Desk", "Uninstall New B Desk"));
+        Program.Style(this, Program.T($"卸载 {Program.Name}", $"Uninstall {Program.Name}"));
         var data = new CheckBox
         {
             Content = Program.T("同时删除我的数据（设置、备忘录、密码箱等，删除后无法恢复）", "Also delete my data (settings, memos, password vault — cannot be undone)"),
@@ -449,7 +454,7 @@ sealed class UninstallWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
         buttons.Children.Add(cancel); buttons.Children.Add(ok);
         var root = new StackPanel { Margin = new Thickness(28, 24, 28, 22) };
-        root.Children.Add(Program.Header(Program.T("要把 New B Desk 从这台电脑上卸载吗？桌面上的文件不会被动。", "Remove New B Desk from this PC? Files on your desktop are not touched.")));
+        root.Children.Add(Program.Header(Program.T($"要把 {Program.Name} 从这台电脑上卸载吗？桌面上的文件不会被动。", $"Remove {Program.Name} from this PC? Files on your desktop are not touched.")));
         root.Children.Add(data);
         root.Children.Add(status);
         root.Children.Add(buttons);

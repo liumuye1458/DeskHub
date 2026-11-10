@@ -1,0 +1,11 @@
+<UserControl x:Class="DeskHub.UI.Settings.KeysPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 快捷键（编译开关 FeatHotkeys） -->
+  <StackPanel>
+    <TextBlock FontSize="14" FontWeight="Bold" Foreground="#222">快捷键</TextBlock>
+    <TextBlock Foreground="#999" FontSize="12" Margin="0,4,0,12" TextWrapping="Wrap">点一下右边的框，然后直接按下新的组合键；按 Backspace 清除（不用快捷键）。被别的程序占用的组合会标红提示。</TextBlock>
+    <StackPanel x:Name="KeyRows"/>
+    <TextBlock x:Name="IndexInfo" Foreground="#999" FontSize="12" Margin="0,18,0,0" TextWrapping="Wrap"/>
+  </StackPanel>
+</UserControl>

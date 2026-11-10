@@ -63,7 +63,8 @@ public partial class FenceWindow : Window
     const double IconSize = 42; // 和 FenceWindow.xaml 里图标的宽高一致
 
     public string Key { get; }
-    public Zone Zone => Key switch { "apps" => Zone.Apps, "folders" => Zone.Folders, "today" => Zone.Today, "cold" => Zone.Cold, "active" => Zone.Active, _ => Zone.Custom };
+    /// <summary>收什么东西（固定分区看 Edition.Fences；自建分区是 Custom）。</summary>
+    public Zone Zone { get; init; } = Zone.Custom;
     readonly IFenceHost _host;
     readonly ObservableCollection<ItemVM> _items = new();
     List<DesktopItem> _all = new();
@@ -83,7 +84,7 @@ public partial class FenceWindow : Window
         // 拖标题栏移动：自己处理（不用系统拖动），这样能边拖边吸附对齐
         Header.MouseLeftButtonDown += (_, e) =>
         {
-            if (e.ClickCount != 1 || e.OriginalSource is DependencyObject d && IsInside(d, MenuBtn)) return;
+            if (e.ClickCount != 1 || e.OriginalSource is DependencyObject d && (IsInside(d, MenuBtn) || IsInside(d, ExtraBtn))) return;
             _moveFrom = Cursor(); _moveStart = new Point(Left, Top);
             _moved = false;
             _tabDown = Hit<GroupTabVM>(e.OriginalSource);
@@ -159,6 +160,22 @@ public partial class FenceWindow : Window
     public string EmptyHint { get; set; } = "";
     public IReadOnlyList<TopicRule> Topics { get; set; } = Array.Empty<TopicRule>();
     public Func<IEnumerable<DesktopItem>, IEnumerable<DesktopItem>> Sort { get; set; } = x => x;
+
+    /// <summary>标题下面一直显示的一行说明（null 不显示）。</summary>
+    public void SetNote(string? text)
+    {
+        NoteText.Text = text ?? "";
+        NoteText.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>标题栏上（菜单按钮左边）多一个按钮。</summary>
+    public void SetButton(string icon, string tip, Action click)
+    {
+        ExtraIcon.Text = icon;
+        ExtraBtn.ToolTip = tip;
+        ExtraBtn.Visibility = Visibility.Visible;
+        ExtraBtn.Click += (_, _) => click();
+    }
 
     public void SetFooter(string? text)
     {

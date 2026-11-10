@@ -1,9 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- 名字、程序文件名、数据目录等标识取自主程序的 Edition 文件夹（专用版只改那里） -->
+  <Import Project="..\DeskHub\Edition\Edition.props" />
+
   <!--
-    New B Desk 安装包。一条命令出安装包：
+    安装包。一条命令出安装包：
       dotnet publish src/Setup -c Release -o 发布
-    会先发布主程序、打成压缩包嵌进来，再生成单个文件 New_B_Desk_Setup_版本号.exe。
+    会先发布主程序、打成压缩包嵌进来，再生成单个文件 前缀_版本号.exe（前缀见 Edition.props 的 SetupFilePrefix）。
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -16,12 +19,12 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
-    <AssemblyName>New_B_Desk_Setup_$(Version)</AssemblyName>
+    <AssemblyName>$(SetupFilePrefix)_$(Version)</AssemblyName>
     <RootNamespace>HotaSetup</RootNamespace>
     <ApplicationIcon>..\DeskHub\Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Product>New B Desk</Product>
-    <AssemblyTitle>New B Desk 安装程序</AssemblyTitle>
+    <AssemblyTitle>$(Product) 安装程序</AssemblyTitle>
+    <DefineConstants>$(DefineConstants);SETUP</DefineConstants>
     <Company>HOTA</Company>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <AppOut>$(BaseIntermediateOutputPath)app\</AppOut>
@@ -29,6 +32,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\DeskHub\Edition\Edition.cs" Link="Edition.cs" />
     <Resource Include="..\DeskHub\Assets\app.ico" Link="app.ico" />
   </ItemGroup>
 

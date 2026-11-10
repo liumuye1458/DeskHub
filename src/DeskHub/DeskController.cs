@@ -18,14 +18,14 @@ public sealed partial class DeskController : IFenceHost
     public StateStore State { get; }
     public bool Sandbox { get; }
     readonly DesktopSource _src;
-    readonly Archiver _archiver;
+    /// <summary>批量挪文件 + 撤回（归档、分区标题栏按钮都用它，记进“移动记录”）。</summary>
+    public FileMover Mover { get; }
     readonly Dispatcher _ui;
     readonly Dictionary<string, FenceWindow> _fences = new();
     ClockWindow? _clock;
     public ClockWindow? Clock => _clock;
-    CalendarWidget? _cal;
-    /// <summary>桌面上的日历（隐藏了就是 null）。</summary>
-    public CalendarWidget? CalWidget => _cal;
+    /// <summary>桌面上的日历（隐藏了、或本版本没有日历就是 null）。具体操作在 DeskController.Calendar.cs。</summary>
+    Window? _cal;
     List<DesktopItem> _items = new();
     bool _firstRun;
     readonly DispatcherTimer _midnight = new(DispatcherPriority.Background);
@@ -33,30 +33,29 @@ public sealed partial class DeskController : IFenceHost
     readonly DispatcherTimer _displaySettle = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.5) };
     bool _displayBusy;
     readonly DispatcherTimer _displayPoll = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(3) };
-    readonly DispatcherTimer _archiveSoon = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(2) };
-    DateTime _archiveAskedDay = DateTime.MinValue;
     uint _taskbarCreated;
 
     public event Action<string>? Notify;          // 托盘气泡提示
     public void ShowNote(string msg) => Notify?.Invoke(msg);
     public event Action? RequestSettings;
-    public event Action? RequestArchiveLog;
+    /// <summary>打开设置里的“移动记录”。</summary>
+    public event Action? RequestMoveLog;
 
     static readonly StringComparer NameOrder = StringComparer.Create(new CultureInfo("zh-CN"), true);
 
     public DeskController(AppConfig cfg, StateStore st, DesktopSource src, bool sandbox)
     {
         Cfg = cfg; State = st; _src = src; Sandbox = sandbox;
-        _archiver = new Archiver(cfg, st);
+        Mover = new FileMover(st);
+        InitArchive();
         _ui = Dispatcher.CurrentDispatcher;
         _firstRun = st.Items.Count == 0;
         // 全新安装（没有任何记录、没摆过）：启动后按方案 B 两翼留白摆好
         _freshInstall = _firstRun && cfg.Layout.Count == 0 && cfg.Layouts.Count == 0 && cfg.Scheme == null;
         _src.Changed += () => _ui.BeginInvoke(Refresh);
         _src.Renamed += (a, b) => _ui.BeginInvoke(() => State.Rename(a, b));
-        _midnight.Tick += (_, _) => { Refresh(); CheckArchive(); _cal?.GoToday(); ScheduleMidnight(); };
+        _midnight.Tick += (_, _) => { Refresh(); ArchiveTick(); CalendarToday(); ScheduleMidnight(); };
         _saveSoon.Tick += (_, _) => { _saveSoon.Stop(); State.Save(); };
-        _archiveSoon.Tick += (_, _) => { _archiveSoon.Stop(); CheckArchive(); };
         // 插拔显示器、改分辨率时系统会连发好几次通知，中间状态是乱的：等稳定 1.5 秒再处理，期间不保存布局
         _displaySettle.Tick += (_, _) => { _displaySettle.Stop(); _displayBusy = false; OnDisplayStable(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanging += (_, _) => _ui.BeginInvoke(DisplayChanging);
@@ -80,7 +79,7 @@ public sealed partial class DeskController : IFenceHost
         InitProfiles();
         _clock = new ClockWindow { ShowSeconds = Cfg.ShowSeconds, Note = Cfg.ClockNote };
         _clock.Moved += () => SaveLayout("clock", _clock);
-        _clock.Clicked += () => { SetCalendarShown(true); _cal?.GoToday(); };
+        _clock.Clicked += () => ClockClicked();
         Place(_clock, "clock");
         _clock.SourceInitialized += (_, _) =>
         {
@@ -89,16 +88,12 @@ public sealed partial class DeskController : IFenceHost
         };
         _clock.Show();
 
-        Make("apps", L.T("常用软件"), L.T("固定 · 不自动移动"), f => { f.Sort = x => x.OrderBy(i => !i.IsSystem).ThenBy(i => i.DisplayName, NameOrder); f.EmptyHint = L.T("桌面上的快捷方式会放在这里"); });
-        Make("today", L.T("今天"), L.T("今天放到桌面的都在这"), f => { f.ShowNewDot = true; f.Sort = x => x.OrderByDescending(i => i.FirstSeen); f.EmptyHint = L.T("今天还没有新文件"); });
-        Make("folders", L.T("项目文件夹"), L.T("固定"), f => { f.Sort = x => x.OrderBy(i => i.DisplayName, NameOrder); f.EmptyHint = L.T("桌面上的文件夹会放在这里"); });
-        Make("active", L.T("进行中"), "", f => { f.ShowTabs = true; f.ShowChips = true; f.Sort = x => x.OrderByDescending(i => i.LastTouch); });
-        Make("cold", L.T("冷却区"), "", f => { f.ShowDaysBadge = true; f.Cold = true; f.Sort = x => x.OrderBy(i => i.DaysLeft).ThenBy(i => i.LastTouch); f.EmptyHint = L.T("没有冷却中的文件"); });
+        foreach (var spec in Specs) MakeFixed(spec);
         foreach (var cf in Cfg.CustomFences) MakeCustom(cf);
         ApplyTexts();
         NormalizeGroups();
         foreach (var f in _fences.Values) if (!HiddenMember(f.Key)) f.Show(); // 盒子里只显示当前标签那一个
-        if (Cfg.CalShow) MakeCalendar(); // 分区摆好以后再放日历，第一次能找空地
+        StartCalendar(); // 分区摆好以后再放日历，第一次能找空地
 
         if (Cfg.HideSystemIcons && !Sandbox) DesktopHost.HideSystemIcons();
         Refresh();
@@ -106,7 +101,7 @@ public sealed partial class DeskController : IFenceHost
         // 关着的时候换过屏：窗口都摆出来以后按换屏规则切一次
         if (_tidyAfterStart) _ui.BeginInvoke(DispatcherPriority.Background, OnDisplayStable);
         ScheduleMidnight();
-        _archiveSoon.Start(); // 开机两分钟后再检查归档，不和开机抢资源
+        StartArchive();
         if (_freshInstall) _ui.BeginInvoke(DispatcherPriority.ApplicationIdle, FirstLayout);
     }
 
@@ -141,13 +136,42 @@ public sealed partial class DeskController : IFenceHost
         return IntPtr.Zero;
     }
 
-    void Make(string key, string title, string hint, Action<FenceWindow> setup)
+    void Make(string key, string title, string hint, Action<FenceWindow> setup, Zone zone = Zone.Custom)
     {
-        var f = new FenceWindow(key, title, hint, this) { Topics = Cfg.Topics };
+        var f = new FenceWindow(key, title, hint, this) { Zone = zone, Topics = Cfg.Topics };
         setup(f);
         Place(f, key);
         _fences[key] = f;
     }
+
+    // ================= 固定分区（Edition.Fences） =================
+    /// <summary>本版本的固定分区（启动时取一次，标题按当时的界面语言）。</summary>
+    public IReadOnlyList<FenceSpec> Specs { get; } = Edition.Fences;
+
+    FenceSpec? SpecOf(string key) => Specs.FirstOrDefault(s => s.Key == key);
+
+    void MakeFixed(FenceSpec spec) => Make(spec.Key, spec.Title, spec.Hint ?? "", f =>
+    {
+        f.EmptyHint = spec.EmptyHint;
+        f.Sort = spec.Sort switch
+        {
+            FenceSort.SystemFirst => x => x.OrderBy(i => !i.IsSystem).ThenBy(i => i.DisplayName, NameOrder),
+            FenceSort.NewestFirst => x => x.OrderByDescending(i => i.FirstSeen),
+            FenceSort.RecentFirst => x => x.OrderByDescending(i => i.LastTouch),
+            FenceSort.DueFirst => x => x.OrderBy(i => i.DaysLeft).ThenBy(i => i.LastTouch),
+            _ => x => x.OrderBy(i => i.DisplayName, NameOrder),
+        };
+        // 跟着“收什么”来的样子：今天有新点、进行中按事项分页签、冷却区有剩余天数角标
+        switch (spec.Zone)
+        {
+            case Zone.Today: f.ShowNewDot = true; break;
+            case Zone.Active: f.ShowTabs = true; f.ShowChips = true; break;
+            case Zone.Cold: f.ShowDaysBadge = true; f.Cold = true; break;
+            case Zone.Files: f.ShowChips = true; break;
+        }
+        f.SetNote(spec.Note);
+        if (spec.Button is { } b) f.SetButton(b.Icon, b.Tip, () => b.Click(f, this));
+    }, spec.Zone);
 
     // ================= 自定义分区 =================
     void MakeCustom(CustomFence cf) =>
@@ -203,33 +227,42 @@ public sealed partial class DeskController : IFenceHost
 
     /// <summary>桌面项现在显示在哪个分区（查找结果里用）。</summary>
     public string FenceTitle(DesktopItem it) =>
-        it.Zone == Zone.Custom ? Cfg.CustomFences.FirstOrDefault(c => c.Id == it.Fence)?.Title ?? L.T("自定义分区") : ZoneName(it.Zone);
+        it.Zone == Zone.Custom ? Cfg.CustomFences.FirstOrDefault(c => c.Id == it.Fence)?.Title ?? L.T("自定义分区") : Specs.FirstOrDefault(s => s.Zone == it.Zone)?.Title ?? "";
 
     /// <summary>设置改了以后，刷新各分区上的说明文字。</summary>
     public void ApplyTexts()
     {
-        _fences["active"].HintText.Text = L.F("{0} 天内用过 · 按事项分", Cfg.ColdDays);
-        _fences["active"].EmptyHint = L.F("最近 {0} 天没有用过的文件", Cfg.ColdDays);
-        _fences["cold"].HintText.Text = L.F("{0} 天没碰 · 角标 = 距归档还剩几天", Cfg.ColdDays);
-        _fences["cold"].SetFooter(Cfg.AutoArchive
-            ? L.F("{0} 天没碰的会移到 {1}", Cfg.ArchiveDays, Path.Combine(Cfg.ArchiveRoot, L.T("年-月"), L.T("事项")) + "\\")
-            : L.T("自动归档已关闭"));
+#if FEAT_FLOW
+        // 进行中、冷却区的说明跟着设置里的天数走（Edition 里写了 Hint 的就用写的）
+        foreach (var spec in Specs)
+        {
+            var f = _fences[spec.Key];
+            if (spec.Zone == Zone.Active)
+            {
+                if (spec.Hint == null) f.HintText.Text = L.F("{0} 天内用过 · 按事项分", Cfg.ColdDays);
+                if (spec.EmptyHint.Length == 0) f.EmptyHint = L.F("最近 {0} 天没有用过的文件", Cfg.ColdDays);
+            }
+            if (spec.Zone == Zone.Cold)
+            {
+#if FEAT_ARCHIVE
+                if (spec.Hint == null) f.HintText.Text = L.F("{0} 天没碰 · 角标 = 距归档还剩几天", Cfg.ColdDays);
+                f.SetFooter(Cfg.AutoArchive
+                    ? L.F("{0} 天没碰的会移到 {1}", Cfg.ArchiveDays, Path.Combine(Cfg.ArchiveRoot, L.T("年-月"), L.T("事项")) + "\\")
+                    : L.T("自动归档已关闭"));
+#else
+                if (spec.Hint == null) f.HintText.Text = L.F("{0} 天没碰", Cfg.ColdDays);
+#endif
+            }
+        }
         foreach (var f in _fences.Values) f.Topics = Cfg.Topics;
+#endif
         if (_clock != null) { _clock.ShowSeconds = Cfg.ShowSeconds; _clock.Note = Cfg.ClockNote; _clock.Tick(); }
         RefreshGroupTabs();
     }
 
     // ================= 布局 =================
-    static readonly Dictionary<string, Rect> Default = new()
-    {
-        // 按 1600×852 的设计稿排布，实际按工作区等比缩放（与效果图一致）
-        ["clock"] = new(40, 28, 0, 0),
-        ["apps"] = new(40, 190, 250, 470),
-        ["today"] = new(320, 40, 470, 250),
-        ["folders"] = new(320, 310, 470, 150),
-        ["active"] = new(820, 40, 540, 340),
-        ["cold"] = new(820, 400, 540, 200),
-    };
+    // 按 1600×852 的设计稿排布，实际按工作区等比缩放（与效果图一致）；分区的在 Edition.Fences 里
+    Dictionary<string, Rect> Default => Specs.Select(s => (s.Key, s.Default)).Append(("clock", new Rect(40, 28, 0, 0))).ToDictionary(x => x.Item1, x => x.Item2);
 
     void Place(Window w, string key)
     {
@@ -258,7 +291,19 @@ public sealed partial class DeskController : IFenceHost
     }
 
     /// <summary>位置之外还要记大小的窗口：分区、日历。</summary>
-    static bool Sized(Window w) => w is FenceWindow or CalendarWidget;
+    bool Sized(Window w) => w is FenceWindow || (_cal != null && w == _cal);
+
+    // 自动归档（编译开关 FeatArchive，见 DeskController.Archive.cs）
+    partial void InitArchive();
+    partial void StartArchive();
+    partial void ArchiveTick();
+    partial void AddArchiveMenu(List<ShellMenu.Own?> own, DesktopItem item);
+    partial void AddArchiveMenu(System.Windows.Controls.ContextMenu m);
+
+    // 日历（编译开关 FeatCalendar，见 DeskController.Calendar.cs；不编译时这些调用自动去掉）
+    partial void StartCalendar();
+    partial void CalendarToday();
+    partial void ClockClicked();
 
     // ================= 日历 =================
     /// <summary>第一次出现：找一块不压住分区、时钟、工具条的空地（先右边从上往下，再左边）；标准大小放不下就用小号；都没有就放右上角。</summary>
@@ -281,25 +326,6 @@ public sealed partial class DeskController : IFenceHost
         w.Left = wa.Right - 300 - 16; w.Top = wa.Top + 16;
     }
 
-    void MakeCalendar()
-    {
-        _cal = new CalendarWidget(Cfg);
-        _cal.Moved += () => { if (_cal != null) SaveLayout("calendar", _cal); };
-        _cal.HideRequested += () => SetCalendarShown(false);
-        _cal.AiSettingsRequested += () => OpenSettings("ai");
-        Place(_cal, "calendar");
-        _cal.Show();
-    }
-
-    /// <summary>显示 / 隐藏桌面上的日历（工具条“日历”、快捷键、设置、日历菜单都走这里）。</summary>
-    public void SetCalendarShown(bool show)
-    {
-        if (Cfg.CalShow != show) { Cfg.CalShow = show; Cfg.Save(); }
-        if (show && _cal == null) MakeCalendar();
-        else if (!show && _cal != null) { _cal.Close(); _cal = null; }
-    }
-
-    public void ToggleCalendar() => SetCalendarShown(_cal == null);
 
     static bool OnScreen(Rect r)
     {
@@ -698,7 +724,7 @@ public sealed partial class DeskController : IFenceHost
 
     sealed class LayoutFile
     {
-        public string App { get; set; } = "New B Desk";
+        public string App { get; set; } = Brand.Name;
         public string Kind { get; set; } = "layout";
         public int Version { get; set; } = 1;
         public SavedLayout Layout { get; set; } = new();
@@ -788,17 +814,17 @@ public sealed partial class DeskController : IFenceHost
                     var members = Members(f);
                     b.Items = members.Max(x => x.ItemCount); // 盒子：按东西最多的那个标签算高度，切标签时不用变大小
                     b.ChromeW = f.ChromeW; b.ChromeH = members.Max(x => x.ChromeH);
-                    b.MinRows = members.Any(x => x.Zone is Zone.Today or Zone.Active or Zone.Cold) ? 2 : 1;
+                    b.MinRows = members.Any(x => x.Zone is Zone.Today or Zone.Active or Zone.Cold or Zone.Files) ? 2 : 1;
                     b.Group = wings
-                        ? (members.Any(x => x.Zone is Zone.Apps or Zone.Folders or Zone.Custom) && !members.Any(x => x.Zone is Zone.Today or Zone.Active or Zone.Cold) ? 0 : 2)
-                        : f.Zone switch { Zone.Apps => 0, Zone.Folders => 0, Zone.Custom => 1, Zone.Active => 1, _ => 2 };
+                        ? (members.All(x => SpecOf(x.Key)?.Side != FenceSide.Right) ? 0 : 2) // 自建分区算左边
+                        : SpecOf(f.Key)?.Column ?? 1;
                     b.Spill = f.Zone == Zone.Custom && !wings;
                 }
                 else b.Group = k == "clock" ? 0 : k == "calendar" ? 2 : 9; // 日历：右列最上面，大小不动
                 blocks.Add(b);
             }
             // 列内顺序：左列 时钟、常用软件、项目文件夹；中列 自定义分区、进行中；右列 今天、冷却区
-            int Rank(Block b) => b.Key switch { "calendar" => -1, "clock" => 0, "apps" => 1, "today" => 0, "folders" => 9, "active" => 9, "cold" => 9, _ => 2 };
+            int Rank(Block b) => b.Key switch { "calendar" => -1, "clock" => 0, var k => SpecOf(k)?.Rank ?? 2 };
             blocks = blocks.OrderBy(Rank).ThenBy(b => Cfg.CustomFences.FindIndex(c => c.Id == b.Key)).ToList();
             var scale = DpiScale();
             if (auto && wings) Arranger.Wings(blocks, wa, avoid, Cfg.ArrangeGap, scale, oneBox: Cfg.Scheme == "C");
@@ -881,11 +907,6 @@ public sealed partial class DeskController : IFenceHost
     public IReadOnlyList<DesktopItem> Items => _items;
     public DesktopSource Source => _src;
 
-    public static string ZoneName(Zone z) => z switch
-    {
-        Zone.Apps => L.T("常用软件"), Zone.Folders => L.T("项目文件夹"), Zone.Today => L.T("今天"), Zone.Active => L.T("进行中"), Zone.Custom => L.T("自定义分区"), _ => L.T("冷却区"),
-    };
-
     public DesktopItem? Find(string path) => _items.FirstOrDefault(i => string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase));
 
     public void Refresh()
@@ -898,11 +919,7 @@ public sealed partial class DeskController : IFenceHost
         State.Prune(items.Select(i => i.Path));
         _items = items;
 
-        _fences["apps"].SetItems(items.Where(i => i.Zone == Zone.Apps).ToList());
-        _fences["folders"].SetItems(items.Where(i => i.Zone == Zone.Folders).ToList());
-        _fences["today"].SetItems(items.Where(i => i.Zone == Zone.Today).ToList());
-        _fences["active"].SetItems(items.Where(i => i.Zone == Zone.Active).ToList());
-        _fences["cold"].SetItems(items.Where(i => i.Zone == Zone.Cold).ToList());
+        foreach (var spec in Specs) _fences[spec.Key].SetItems(items.Where(i => i.Zone == spec.Zone).ToList());
         foreach (var cf in Cfg.CustomFences)
             if (_fences.TryGetValue(cf.Id, out var f)) f.SetItems(items.Where(i => i.Zone == Zone.Custom && i.Fence == cf.Id).ToList());
         RefreshGroupTabs();
@@ -917,41 +934,21 @@ public sealed partial class DeskController : IFenceHost
     }
 
     // ================= 归档 =================
-    public List<DesktopItem> DueItems() => _archiver.Due(_items).ToList();
-
-    public void CheckArchive(bool userAsked = false)
+    /// <summary>
+    /// 把一批桌面文件挪走（目标文件夹由调用方定，例如分区标题栏上的按钮），记进“移动记录”，可以撤回。
+    /// 挪完刷新分区；有没挪成的（正在用、没权限）返回在结果里，由调用方决定怎么提示。
+    /// </summary>
+    public FileMover.Result MoveFiles(IEnumerable<MoveItem> items, string label)
     {
+        var r = Mover.Move(items, label);
         Refresh();
-        var due = DueItems();
-        if (due.Count == 0) { if (userAsked) Notify?.Invoke(L.T("现在没有需要归档的文件")); return; }
-        if (!Cfg.AutoArchive && !userAsked) return;
-        if (!Cfg.ArchiveConfirmed || userAsked)
-        {
-            // 第一次归档必须让用户看过清单；之后才自动执行
-            if (!userAsked && _archiveAskedDay == DateTime.Today) return;
-            _archiveAskedDay = DateTime.Today;
-            var win = new ArchiveConfirmWindow(due, Cfg);
-            if (win.ShowDialog() != true) return;
-            Cfg.ArchiveConfirmed = true;
-            Cfg.Save();
-        }
-        RunArchive(due);
+        return r;
     }
 
-    public void ArchiveNow(DesktopItem item) => RunArchive(new List<DesktopItem> { item });
-
-    void RunArchive(List<DesktopItem> due)
+    /// <summary>撤回一批移动（设置 →“移动记录”）。</summary>
+    public (int ok, int fail) UndoMove(string batch)
     {
-        var r = _archiver.Run(due, DateTime.Now);
-        Refresh();
-        var msg = L.F("已归档 {0} 个文件到 {1}，可在“归档记录”里撤回", r.Moved, Path.Combine(Cfg.ArchiveRoot, DateTime.Now.ToString("yyyy-MM")) + "\\");
-        if (r.Failed.Count > 0) msg += L.F("；{0} 个文件正在使用，下次再试", r.Failed.Count);
-        Notify?.Invoke(msg);
-    }
-
-    public (int ok, int fail) Undo(string batch)
-    {
-        var r = _archiver.Undo(batch);
+        var r = Mover.Undo(batch);
         Refresh();
         return r;
     }
@@ -968,7 +965,7 @@ public sealed partial class DeskController : IFenceHost
         return new Rect(fromDev.Transform(new Point(wa.Left, wa.Top)), fromDev.Transform(new Point(wa.Right, wa.Bottom)));
     }
 
-    public void FooterClicked() => RequestArchiveLog?.Invoke();
+    public void FooterClicked() => RequestMoveLog?.Invoke();
 
     // ================= 用户操作 =================
     public void OpenItem(DesktopItem item)
@@ -1010,6 +1007,7 @@ public sealed partial class DeskController : IFenceHost
         // 好几个：Windows 原生菜单（复制、剪切、删除、压缩、发送到……都是对这一批），前面加本工具的
         var files = items.Where(i => !i.IsSystem).ToList();
         var own = new List<ShellMenu.Own?>();
+#if FEAT_FLOW
         var flowing = files.Where(i => !i.IsDir && !i.IsShortcut).ToList();
         if (flowing.Count == files.Count && files.Count > 0)
         {
@@ -1017,6 +1015,7 @@ public sealed partial class DeskController : IFenceHost
                 .Select(n => (ShellMenu.Own?)new ShellMenu.Own(n, () => { foreach (var it in flowing) State.Get(it.Path, DateTime.Now).Topic = n; Refresh(); })).ToList();
             own.Add(new ShellMenu.Own(L.F("归到事项（{0} 个）", flowing.Count), null, Sub: subs!));
         }
+#endif
         // 原生菜单要求在同一个文件夹里；桌面上的东西有的在“公用桌面”，混在一起时只给本工具的菜单
         bool oneDir = files.Select(i => Path.GetDirectoryName(i.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1;
         if (!oneDir && files.Count > 0)
@@ -1042,6 +1041,7 @@ public sealed partial class DeskController : IFenceHost
             if (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
                 own.Add(new(L.T("固定到任务栏…"), () => Notify?.Invoke(L.T("Windows 只允许资源管理器代为固定。把这个图标直接拖到任务栏上松手，就固定好了。"))));
         }
+#if FEAT_FLOW
         bool flows = !item.IsDir && !item.IsShortcut && !item.IsSystem;
         if (flows)
         {
@@ -1049,8 +1049,9 @@ public sealed partial class DeskController : IFenceHost
                 .Select(n => (ShellMenu.Own?)new ShellMenu.Own(n, () => MoveToTopic(item, n, fence), Checked: item.Topic == n)).ToList();
             own.Add(new ShellMenu.Own(L.T("归到事项"), null, Sub: subs!));
             own.Add(new ShellMenu.Own(item.Pinned ? L.T("取消钉住") : L.T("钉住（留在进行中，不归档）"), () => { meta.Pinned = !meta.Pinned; meta.Placed = null; Refresh(); }));
-            if (!item.IsPublic) own.Add(new ShellMenu.Own(L.T("立即归档"), () => ArchiveNow(item)));
+            AddArchiveMenu(own, item);
         }
+#endif
         if (ShellMenu.Show(fence, new List<string> { item.Path }, own)) _ui.BeginInvoke(DispatcherPriority.Background, Refresh);
     }
 
@@ -1068,8 +1069,8 @@ public sealed partial class DeskController : IFenceHost
         }
         m.Items.Add(new System.Windows.Controls.Separator());
         Add(L.T("设置…"), () => RequestSettings?.Invoke());
-        Add(L.T("立即检查归档"), () => CheckArchive(userAsked: true));
-        Add(L.T("归档记录 / 撤回…"), () => RequestArchiveLog?.Invoke());
+        AddArchiveMenu(m);
+        Add(L.T("移动记录 / 撤回…"), () => RequestMoveLog?.Invoke());
         m.Items.Add(new System.Windows.Controls.Separator());
         Add(L.T("排列：对齐现在的摆法"), () => Tools?.Arrange(1));
         Add(L.T("排列：按推荐方案重排"), () => Tools?.Arrange(2));
@@ -1097,31 +1098,13 @@ public sealed partial class DeskController : IFenceHost
             State.Rename(item.Path, dest);
             ShellIcons.Forget(item.Path);
         }
-        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, "New B Desk"); }
+        catch (Exception ex) { MessageBox.Show(fence, L.T("重命名失败：") + ex.Message, Brand.Name); }
         Refresh();
     }
 
-    public void MoveToTopic(DesktopItem item, string topic, FenceWindow fence)
-    {
-        if (item.IsDir || item.IsShortcut || item.IsSystem) return;
-        var from = item.Topic;
-        var meta = State.Get(item.Path, DateTime.Now);
-        meta.Topic = topic;
-        Refresh();
-        if (from == topic || topic == AppConfig.OtherTopic) return;
-        var rule = Cfg.FindTopic(topic);
-        if (rule == null) return;
-        var kw = Classifier.SuggestKeyword(item.Name, Cfg);
-        var toast = new LearnToast(item.Name, from, topic, kw, k =>
-        {
-            foreach (var t in Cfg.Topics) t.Learned.RemoveAll(x => string.Equals(x, k, StringComparison.OrdinalIgnoreCase));
-            rule.Learned.Add(k);
-            Cfg.Save();
-            Refresh();
-        });
-        toast.Show();
-        toast.PlaceNear(fence);
-    }
+    /// <summary>换事项，并问要不要记住（没有事项分类和流转时什么也不做）。</summary>
+    public void MoveToTopic(DesktopItem item, string topic, FenceWindow fence) => LearnTopic(item, topic, fence);
+    partial void LearnTopic(DesktopItem item, string topic, FenceWindow fence);
 
     /// <summary>把桌面项拖到另一个分区。拖到"进行中"的某个事项标签上，同时换事项。</summary>
     public void PlaceItem(DesktopItem item, FenceWindow fence, string? topic)
@@ -1247,7 +1230,7 @@ public sealed partial class DeskController : IFenceHost
     public void Snapshot(string file, string? wallpaper = null)
     {
         var wa = SystemParameters.WorkArea;
-        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(_fences["active"]);
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(_fences.Values.First());
         var dv = new System.Windows.Media.DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
@@ -1263,7 +1246,7 @@ public sealed partial class DeskController : IFenceHost
                 dc.DrawImage(img, new Rect((wa.Width - img.Width * sc) / 2, (wa.Height - img.Height * sc) / 2, img.Width * sc, img.Height * sc));
                 dc.Pop();
             }
-            var wins = _fences.Values.Cast<Window>().Append(_clock!).Concat(_cal != null ? new Window[] { _cal } : Array.Empty<Window>()).Concat(Application.Current.Windows.OfType<LearnToast>())
+            var wins = _fences.Values.Cast<Window>().Append(_clock!).Concat(_cal != null ? new Window[] { _cal } : Array.Empty<Window>()).Concat(Application.Current.Windows.OfType<Window>().Where(w => w.GetType().Name == "LearnToast"))
                 .Concat(Tools?.DesktopWindows() ?? Enumerable.Empty<Window>()).Concat(Application.Current.Windows.OfType<ArrangeToast>().Where(t => t.IsVisible));
             foreach (var w in wins)
             {

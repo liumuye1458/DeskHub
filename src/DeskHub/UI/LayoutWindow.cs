@@ -116,7 +116,7 @@ public sealed class LayoutWindow : Window
 
     void Export(SavedLayout s)
     {
-        var d = new Microsoft.Win32.SaveFileDialog { Filter = L.T("布局文件") + " (*.json)|*.json", FileName = L.F("New B Desk 布局 {0}.json", Safe(s.Name)) };
+        var d = new Microsoft.Win32.SaveFileDialog { Filter = L.T("布局文件") + " (*.json)|*.json", FileName = L.F("{0} 布局 {1}.json", Brand.Name, Safe(s.Name)) };
         if (d.ShowDialog(this) != true) return;
         try { _c.ExportLayout(s, d.FileName); MessageBox.Show(this, L.T("已导出。把这个文件拷到别的电脑上，在“布局”里点“导入”。"), L.T("布局")); }
         catch (Exception ex) { MessageBox.Show(this, L.T("导出失败：") + ex.Message, L.T("布局")); }

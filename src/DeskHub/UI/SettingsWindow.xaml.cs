@@ -1,462 +1,122 @@
-using System.Diagnostics;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Input;
 using DeskHub.Core;
+using DeskHub.UI.Settings;
 
 namespace DeskHub.UI;
 
+/// <summary>
+/// 设置窗口。每页（或页里的一段）是 UI\Settings 里的一个文件，实现 ISettingsPart；
+/// 可选功能关掉时那个文件不编译，这里对应的一页也就没有。
+/// 页的键：rules 整理规则 / flow 流转与归档 / log 移动记录 / keys 快捷键 / general 常规 / ai 智能识别 / about 关于
+/// </summary>
 public partial class SettingsWindow : Window
 {
     readonly DeskController _c;
-    readonly List<RuleRow> _rows = new();
-    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    const string RunName = "DeskHub";
-
-    sealed class RuleRow
-    {
-        public required Border Root;
-        public required TextBox Name, Keywords, Learned;
-        public required string Color;
-    }
-
-    static readonly string[] Palette = { "#f04b4b", "#0095fc", "#ffb800", "#9b59b6", "#4a5568", "#07c255", "#ff7a45", "#13c2c2" };
+    readonly List<(string Key, RadioButton Nav, ScrollViewer Page)> _pages = new();
+    readonly List<(string Page, ISettingsPart Part)> _parts = new();
+    readonly GeneralPage _general;
 
     public SettingsWindow(DeskController c, string page = "rules")
     {
         InitializeComponent();
+        Title = L.F("{0} · 设置", Brand.Name);
         _c = c;
-        var cfg = c.Cfg;
 
-        // 导航
-        void Nav(RadioButton b, FrameworkElement p) => b.Checked += (_, _) =>
-        {
-            foreach (var x in new FrameworkElement[] { PageRules, PageFlow, PageKeys, PageGeneral, PageAi, PageAbout }) x.Visibility = Visibility.Collapsed;
-            p.Visibility = Visibility.Visible;
-        };
-        Nav(NavRules, PageRules); Nav(NavFlow, PageFlow); Nav(NavKeys, PageKeys); Nav(NavGeneral, PageGeneral); Nav(NavAi, PageAi); Nav(NavAbout, PageAbout);
-        if (page == "flow") NavFlow.IsChecked = true;
-        else if (page == "keys") NavKeys.IsChecked = true;
-        else if (page == "general") NavGeneral.IsChecked = true;
-        else if (page == "ai") NavAi.IsChecked = true;
+#if FEAT_FLOW
+        AddPage("rules", L.T("整理规则"), new RulesPage(c.Cfg));
+#if FEAT_ARCHIVE
+        AddPage("flow", L.T("流转与归档"), new FlowPage(c));
+#else
+        AddPage("flow", L.T("文件流转"), new FlowPage(c));
+#endif
+#endif
+        AddPage("log", L.T("移动记录"), new LogPage(c));
+#if FEAT_HOTKEYS
+        AddPage("keys", L.T("快捷键"), new KeysPage(c));
+#endif
+        _general = new GeneralPage(c);
+        AddPage("general", L.T("常规"), _general);
+#if FEAT_TRIPAI || FEAT_LOCALCLAUDE
+        AddPage("ai", L.T("智能识别"), AiPage(c));
+#endif
+        AddPage("about", L.T("关于"), new AboutPage(c.Sandbox));
 
-        // 快捷键
-        BuildKeys();
-        NavKeys.Checked += (_, _) => _ = ShowIndexInfo();
-        if (page == "keys") _ = ShowIndexInfo();
-        Closed += (_, _) => _c.Tools?.ApplyHotkeys(); // 录快捷键时临时停用过，关窗时恢复
-
-        // 规则
-        foreach (var t in cfg.Topics) AddRow(t.Name, t.Color, t.Keywords, t.Learned);
-        AddTopic.Click += (_, _) => AddRow(L.T("新事项"), Palette[_rows.Count % Palette.Length], new(), new(), focus: true);
-
-        // 流转与归档
-        ColdDays.Text = cfg.ColdDays.ToString();
-        ArchiveDays.Text = cfg.ArchiveDays.ToString();
-        ArchiveRoot.Text = cfg.ArchiveRoot;
-        AutoArchive.IsChecked = cfg.AutoArchive;
-        ArchiveRoot.TextChanged += (_, _) => UpdateExample();
-        UpdateExample();
-        Browse.Click += (_, _) =>
-        {
-            using var dlg = new System.Windows.Forms.FolderBrowserDialog { Description = L.T("选择归档位置"), UseDescriptionForTitle = true, SelectedPath = ArchiveRoot.Text };
-            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) ArchiveRoot.Text = dlg.SelectedPath;
-        };
-        CheckNow.Click += (_, _) => { _c.CheckArchive(userAsked: true); BuildLog(); };
-        BuildLog();
-
-        // 常规
-        HideIcons.IsChecked = cfg.HideSystemIcons;
-        ShowSeconds.IsChecked = cfg.ShowSeconds;
-        Glass.IsChecked = cfg.Glass ?? Interop.Backdrop.DefaultOn;
-        ClockNote.Text = cfg.ClockNote;
-        // 语言：第一项"跟随系统"，其余用各自语言的名字显示（不懂当前语言也能找到自己的）
-        LangBox.Items.Add(new ComboBoxItem { Content = L.T("跟随系统") + "（" + L.Languages.First(l => l.Code == L.FromSystem()).Name + "）", Tag = "" });
-        foreach (var l in L.Languages) LangBox.Items.Add(new ComboBoxItem { Content = l.Name, Tag = l.Code });
-        LangBox.SelectedItem = LangBox.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == cfg.Language) ?? LangBox.Items[0];
-        AutoStart.IsChecked = IsAutoStart();
-        AutoStart.IsEnabled = !c.Sandbox;
-        CalShow.IsChecked = cfg.CalShow;
-        CalLunar.IsChecked = cfg.CalLunar;
-        CalChina.IsChecked = cfg.CalChina;
-        CalIndonesia.IsChecked = cfg.CalIndonesia;
-        CalWeekStart.SelectedIndex = cfg.CalMondayFirst ? 0 : 1;
-        CalChinaHint.Text = L.F("已内置 {0} 年（国务院每年 11 月前后公布下一年的安排，公布后随新版本更新）", Holidays.ChinaYears);
-        CalIndonesiaHint.Text = L.F("已内置 {0} 年（按印尼政府 SKB 3 Menteri 公布的日期）", Holidays.IndonesiaYears);
-        ResetLayout.Click += (_, _) => _c.ResetLayout();
-        LookBtn.Click += (_, _) => LookPopup.Open(null, "", this, LookBtn);
-        Layouts.Click += (_, _) => ((App)Application.Current).OpenLayouts();
-
-        // 智能识别（AI 服务）
-        BuildAi(cfg);
-
-        // 关于
-        VersionText.Text = L.F("版本 {0}{1}", typeof(App).Assembly.GetName().Version?.ToString(3), (c.Sandbox ? L.T("（沙盒模式）") : ""));
-        DataDirRun.Text = AppConfig.DataDir;
-        OpenData.Click += (_, _) => Process.Start("explorer.exe", AppConfig.DataDir);
-
+        ShowPage(page);
+        Closed += (_, _) => { foreach (var (_, p) in _parts) p.Closed(); };
         Save.Click += (_, _) => { if (Apply()) Close(); };
     }
 
-    // ---------------- 智能识别（AI 服务） ----------------
-    /// <summary>常用服务：选了就把地址填上（模型点“测试连接”读出来再选）。</summary>
-    static readonly (string Name, string Url)[] AiPresets =
+    void AddPage(string key, string title, UserControl content)
     {
-        ("自己填（公司一体机等）", ""),
-        ("OpenAI", "https://api.openai.com/v1"),
-        ("Claude（Anthropic）", "https://api.anthropic.com/v1"),
-        ("DeepSeek", "https://api.deepseek.com/v1"),
-        ("通义千问（阿里云百炼）", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        ("Kimi（月之暗面）", "https://api.moonshot.cn/v1"),
-        ("本机 Ollama", "http://localhost:11434/v1"),
-    };
-    CancellationTokenSource? _aiCts;
-
-    void BuildAi(AppConfig cfg)
-    {
-        foreach (var p in AiPresets) AiPreset.Items.Add(new ComboBoxItem { Content = L.T(p.Name), Tag = p.Url });
-        AiUrl.Text = cfg.AiUrl;
-        AiModel.Text = cfg.AiModel;
-        AiKey.Password = Secret.Unprotect(cfg.AiKey);
-        int Match() { for (int i = 1; i < AiPresets.Length; i++) if (string.Equals(AiPresets[i].Url, AiUrl.Text.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase)) return i; return 0; }
-        AiPreset.SelectedIndex = Match();
-        bool syncing = false;
-        AiPreset.SelectionChanged += (_, _) =>
+        var sv = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(26, 18, 26, 18), Visibility = Visibility.Collapsed };
+        var nav = new RadioButton { Style = (Style)FindResource("NavItem"), GroupName = "nav", Content = title };
+        nav.Checked += (_, _) =>
         {
-            if (syncing || AiPreset.SelectedItem is not ComboBoxItem { Tag: string url }) return;
-            syncing = true;
-            if (url.Length > 0 && !string.Equals(AiUrl.Text.Trim(), url, StringComparison.OrdinalIgnoreCase)) { AiUrl.Text = url; AiModel.ItemsSource = null; AiModel.Text = ""; }
-            else if (url.Length == 0 && Match() > 0) AiUrl.Text = "";
-            syncing = false;
-            AiUrl.Focus();
+            foreach (var p in _pages) p.Page.Visibility = p.Nav == nav ? Visibility.Visible : Visibility.Collapsed;
+            if (content is ISettingsPart part) part.Shown();
         };
-        AiUrl.TextChanged += (_, _) => { if (syncing) return; syncing = true; AiPreset.SelectedIndex = Match(); syncing = false; };
-        AiTest.Click += async (_, _) =>
-        {
-            if (AiUrl.Text.Trim().Length == 0) { AiTestHint.Text = L.T("先填地址"); AiTestHint.Foreground = Brushes.IndianRed; return; }
-            _aiCts?.Cancel();
-            var cts = _aiCts = new CancellationTokenSource();
-            AiTest.IsEnabled = false;
-            AiTestHint.Foreground = Brushes.Gray;
-            AiTestHint.Text = L.T("正在连接……");
-            try
-            {
-                var models = await TripAi.ListModels(AiUrl.Text, AiKey.Password.Trim(), cts.Token);
-                var keep = AiModel.Text;
-                AiModel.ItemsSource = models;
-                AiModel.Text = keep.Length > 0 ? keep : models.FirstOrDefault() ?? "";
-                AiTestHint.Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48));
-                AiTestHint.Text = models.Count > 0 ? L.F("连上了，有 {0} 个模型，在左边下拉里选一个。", models.Count) : L.T("连上了，但没读到模型列表，手动填模型名就行。");
-                if (models.Count > 0 && keep.Length == 0) AiModel.IsDropDownOpen = true;
-            }
-            catch (TripAi.AiException ex) { AiTestHint.Foreground = Brushes.IndianRed; AiTestHint.Text = ex.Message; }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { AiTestHint.Foreground = Brushes.IndianRed; AiTestHint.Text = ex.Message; }
-            finally { AiTest.IsEnabled = true; }
-        };
-        Closed += (_, _) => _aiCts?.Cancel();
-
-        // 本机 Claude 小服务
-        LcOn.IsChecked = cfg.LocalClaude;
-        LcPort.Text = cfg.LocalClaudePort.ToString();
-        LcToken.Password = Secret.Unprotect(cfg.LocalClaudeToken);
-        ShowLocalClaude();
-        LcUse.Click += (_, _) =>
-        {
-            if (LcToken.Password.Trim().Length == 0) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("先填口令"); LcToken.Focus(); return; }
-            if (!int.TryParse(LcPort.Text.Trim(), out var port) || port < 1024 || port > 65535) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("端口填 1024 到 65535 之间的数"); return; }
-            LcOn.IsChecked = true;
-            AiUrl.Text = $"http://127.0.0.1:{port}/v1/messages";
-            AiModel.ItemsSource = LocalClaude.Models;
-            AiModel.Text = LocalClaude.Models[0];
-            AiKey.Password = LcToken.Password.Trim();
-            LcHint.Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48));
-            LcHint.Text = L.T("已填到上面的地址、密钥、模型，点“保存”生效。");
-        };
-        LcDoc.Click += (_, _) =>
-        {
-            if (File.Exists(LocalClaude.DocPath)) Process.Start(new ProcessStartInfo(LocalClaude.DocPath) { UseShellExecute = true });
-            else { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("说明文件不见了") + "：" + LocalClaude.DocPath; }
-        };
+        NavList.Children.Add(nav);
+        PageHost.Children.Add(sv);
+        _pages.Add((key, nav, sv));
+        if (content is ISettingsPart sp) _parts.Add((key, sp));
     }
 
-    void ShowLocalClaude()
+#if FEAT_TRIPAI || FEAT_LOCALCLAUDE
+    /// <summary>智能识别：AI 识别行程用的服务、本机 Claude 小服务（各自有编译开关），最后是隐私说明。</summary>
+    UserControl AiPage(DeskController c)
     {
-        var running = _c.Tools?.LocalClaude;
-        var err = _c.Tools?.LocalClaudeError ?? "";
-        var exe = LocalClaude.FindClaude();
-        LcHint.Foreground = Brushes.Gray;
-        if (exe == null) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = L.T("这台电脑上没找到 claude 命令行。装好后在命令行里运行一次 claude 登录，再试。"); }
-        else if (running != null) { LcHint.Foreground = new SolidColorBrush(Color.FromRgb(0x07, 0xA5, 0x48)); LcHint.Text = L.F("正在运行：http://127.0.0.1:{0}", running.Port); }
-        else if (err.Length > 0) { LcHint.Foreground = Brushes.IndianRed; LcHint.Text = err; }
-        else LcHint.Text = L.T("没打开。");
+        var stack = new StackPanel();
+#if FEAT_TRIPAI
+        var trip = new TripAiSection(c.Cfg);
+        stack.Children.Add(trip);
+        _parts.Add(("ai", trip));
+#endif
+#if FEAT_LOCALCLAUDE
+#if FEAT_TRIPAI
+        var lc = new LocalClaudeSection(c, trip.Fill);
+#else
+        var lc = new LocalClaudeSection(c, null);
+        lc.LcTitle.Margin = new Thickness(0, 0, 0, 4);
+#endif
+        stack.Children.Add(lc);
+        _parts.Add(("ai", lc));
+#endif
+#if FEAT_TRIPAI
+        stack.Children.Add(new TextBlock { FontSize = 13, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("#222"), Margin = new Thickness(0, 22, 0, 4), Text = L.T("隐私") });
+        stack.Children.Add(new TextBlock { Foreground = Ui.Brush("#666"), FontSize = 12.5, TextWrapping = TextWrapping.Wrap, LineHeight = 20, Text = L.T("只有你点“识别”的时候，丢进来的文字和截图才会发给上面这个服务，平时不联网。用公司一体机或本机 Ollama，内容不出公司 / 不出电脑；用外面的服务，内容会发到对方服务器。") });
+#endif
+        return new UserControl { Content = stack };
+    }
+#endif
+
+    /// <summary>切到某一页（没有这一页就第一页）。</summary>
+    public void ShowPage(string key)
+    {
+        var p = _pages.FirstOrDefault(x => x.Key == key);
+        (p.Nav ?? _pages[0].Nav).IsChecked = true;
     }
 
-    void UpdateExample() =>
-        ArchiveExample.Text = L.F("例：{0}", Path.Combine(ArchiveRoot.Text.Trim(), DateTime.Now.ToString("yyyy-MM"), L.T("报销财务"), "发票_xxx.pdf"));
+    /// <summary>测试用：某一页的滚动区。</summary>
+    public ScrollViewer? PageOf(string key) => _pages.FirstOrDefault(x => x.Key == key).Page;
 
-    // ---------------- 规则行 ----------------
-    void AddRow(string name, string color, List<string> kws, List<string> learned, bool focus = false)
-    {
-        var dot = new System.Windows.Shapes.Ellipse { Width = 10, Height = 10, Fill = Brush(color), VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = L.T("点击换颜色") };
-        var nameBox = new TextBox { Text = name, Width = 96, Style = Res<Style>("WinTextBox"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 10, 0) };
-        var kwBox = new TextBox { Text = string.Join("，", kws), Style = Res<Style>("WinTextBox"), TextWrapping = TextWrapping.Wrap, MinHeight = 30 };
-        var lrBox = new TextBox { Text = string.Join("，", learned), Style = Res<Style>("WinTextBox"), Background = Brush("#F3FCF6"), Foreground = Brush("#07A548"), MinHeight = 28, Margin = new Thickness(0, 6, 0, 0), ToolTip = L.T("学到的关键词") };
-        var del = new Button { Content = L.T("删除"), Style = Res<Style>("BtnW"), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
-
-        var right = new StackPanel();
-        right.Children.Add(kwBox);
-        right.Children.Add(new DockPanel
-        {
-            Children = { lrBox },
-        });
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var head = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 0, 0) };
-        head.Children.Add(dot); head.Children.Add(nameBox);
-        Grid.SetColumn(head, 0); Grid.SetColumnSpan(head, 2); Grid.SetColumn(right, 2); Grid.SetColumn(del, 3);
-        grid.Children.Add(head); grid.Children.Add(right); grid.Children.Add(del);
-
-        var root = new Border { BorderBrush = Brush("#E8E8E8"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 0, 8), Child = grid };
-        var row = new RuleRow { Root = root, Name = nameBox, Keywords = kwBox, Learned = lrBox, Color = color };
-        dot.MouseLeftButtonUp += (_, _) =>
-        {
-            var i = Array.IndexOf(Palette, row.Color.ToLowerInvariant());
-            row.Color = Palette[(i + 1) % Palette.Length];
-            dot.Fill = Brush(row.Color);
-        };
-        del.Click += (_, _) => { RuleRows.Children.Remove(root); _rows.Remove(row); };
-        _rows.Add(row);
-        RuleRows.Children.Add(root);
-        if (focus) { nameBox.Focus(); nameBox.SelectAll(); }
-    }
-
-    // ---------------- 归档记录 ----------------
-    void BuildLog()
-    {
-        LogRows.Children.Clear();
-        var batches = _c.State.ArchiveLog.GroupBy(r => r.Batch).OrderByDescending(g => g.Key).ToList();
-        LogEmpty.Visibility = batches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var g in batches)
-        {
-            var first = g.First();
-            int live = g.Count(r => !r.Undone);
-            var undo = new Button { Content = live == 0 ? L.T("已撤回") : L.T("撤回这批"), Style = Res<Style>("BtnW"), IsEnabled = live > 0 };
-            var batch = g.Key;
-            undo.Click += (_, _) =>
-            {
-                var (ok, fail) = _c.Undo(batch);
-                MessageBox.Show(this, fail == 0 ? L.F("已把 {0} 个文件搬回桌面", ok) : L.F("已搬回 {0} 个，{1} 个没搬回（归档里的文件已被移动或删除）", ok, fail), L.T("撤回归档"));
-                BuildLog();
-            };
-            var names = string.Join("、", g.Take(4).Select(r => Path.GetFileName(r.From))) + (g.Count() > 4 ? L.F(" 等 {0} 个", g.Count()) : "");
-            var dock = new DockPanel();
-            DockPanel.SetDock(undo, Dock.Right);
-            dock.Children.Add(undo);
-            dock.Children.Add(new StackPanel
-            {
-                Children =
-                {
-                    new TextBlock { Text = L.F("{0:yyyy-MM-dd HH:mm}　归档 {1} 个文件", first.Time, g.Count()), FontWeight = FontWeights.SemiBold },
-                    new TextBlock { Text = names, Foreground = Brush("#999"), FontSize = 12, Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
-                },
-            });
-            LogRows.Children.Add(new Border { BorderBrush = Brush("#F0F0F0"), BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 8, 0, 8), Child = dock });
-        }
-    }
-
-    // ---------------- 保存 ----------------
     bool Apply()
     {
         SaveHint.Text = "";
-        if (!int.TryParse(ColdDays.Text, out var cold) || cold < 1 || cold > 365) { SaveHint.Text = L.T("冷却天数要在 1–365 之间"); NavFlow.IsChecked = true; return false; }
-        if (!int.TryParse(ArchiveDays.Text, out var arch) || arch <= cold || arch > 3650) { SaveHint.Text = L.T("归档天数要大于冷却天数"); NavFlow.IsChecked = true; return false; }
-        var root = ArchiveRoot.Text.Trim();
-        if (root.Length < 3 || !Path.IsPathRooted(root)) { SaveHint.Text = L.T("归档位置要写完整路径，例如 D:\\桌面归档"); NavFlow.IsChecked = true; return false; }
-        if (AiUrl.Text.Trim().Length > 0 && !Uri.TryCreate(AiUrl.Text.Trim(), UriKind.Absolute, out _)) { SaveHint.Text = L.T("AI 服务地址要以 http:// 或 https:// 开头"); NavAi.IsChecked = true; return false; }
-        if (AiUrl.Text.Trim().Length > 0 && AiModel.Text.Trim().Length == 0) { SaveHint.Text = L.T("填了 AI 服务地址，还要填模型名（点“测试连接”可以读出来）"); NavAi.IsChecked = true; return false; }
-        if (!int.TryParse(LcPort.Text.Trim(), out var lcPort) || lcPort < 1024 || lcPort > 65535) { SaveHint.Text = L.T("端口填 1024 到 65535 之间的数"); NavAi.IsChecked = true; return false; }
-        if (LcOn.IsChecked == true && LcToken.Password.Trim().Length == 0) { SaveHint.Text = L.T("打开本机 Claude 服务要先填口令"); NavAi.IsChecked = true; LcToken.Focus(); return false; }
-        bool lcChanged = false;
-        var names = _rows.Select(r => r.Name.Text.Trim()).ToList();
-        if (names.Any(n => n.Length == 0) || names.Distinct().Count() != names.Count || names.Contains(AppConfig.OtherTopic))
-        { SaveHint.Text = L.T("事项名称不能为空、不能重复，也不能叫“其他”"); NavRules.IsChecked = true; return false; }
+        foreach (var (page, part) in _parts)
+            if (part.Check() is { } err) { SaveHint.Text = err; ShowPage(page); return false; }
 
         var cfg = _c.Cfg;
-        cfg.Topics = _rows.Select(r => new TopicRule
-        {
-            Name = r.Name.Text.Trim(),
-            Color = r.Color,
-            Keywords = Split(r.Keywords.Text),
-            Learned = Split(r.Learned.Text),
-        }).ToList();
-        cfg.ColdDays = cold;
-        cfg.ArchiveDays = arch;
-        cfg.ArchiveRoot = root;
-        cfg.AutoArchive = AutoArchive.IsChecked == true;
-        cfg.ShowSeconds = ShowSeconds.IsChecked == true;
-        if ((Glass.IsChecked == true) != (cfg.Glass ?? Interop.Backdrop.DefaultOn)) cfg.Glass = Glass.IsChecked == true;
-        Interop.Backdrop.Set(cfg.Glass ?? Interop.Backdrop.DefaultOn ? Interop.Backdrop.Kind.Acrylic : Interop.Backdrop.Kind.None);
-        cfg.CalLunar = CalLunar.IsChecked == true;
-        cfg.CalChina = CalChina.IsChecked == true;
-        cfg.CalIndonesia = CalIndonesia.IsChecked == true;
-        cfg.CalMondayFirst = CalWeekStart.SelectedIndex != 1;
-        cfg.AiUrl = AiUrl.Text.Trim();
-        cfg.AiModel = AiModel.Text.Trim();
-        cfg.AiKey = Secret.Protect(AiKey.Password.Trim());
-        bool lcOn = LcOn.IsChecked == true;
-        var lcToken = LcToken.Password.Trim();
-        if (lcOn != cfg.LocalClaude || lcPort != cfg.LocalClaudePort || lcToken != Secret.Unprotect(cfg.LocalClaudeToken))
-        {
-            cfg.LocalClaude = lcOn;
-            cfg.LocalClaudePort = lcPort;
-            cfg.LocalClaudeToken = Secret.Protect(lcToken);
-            lcChanged = true;
-        }
-        cfg.ClockNote = string.Join(" ", ClockNote.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
-        var newLang = (string)((ComboBoxItem)LangBox.SelectedItem).Tag;
-        bool langChanged = newLang != cfg.Language;
-        cfg.Language = newLang;
-        foreach (var (k, v) in _keySpecs) cfg.Hotkeys[k] = v;
+        foreach (var (_, part) in _parts) part.Store(cfg);
         cfg.Save();
-        if (cfg.HideSystemIcons != (HideIcons.IsChecked == true)) _c.SetHideSystemIcons(HideIcons.IsChecked == true);
-        if (!_c.Sandbox) SetAutoStart(AutoStart.IsChecked == true);
         _c.ApplyTexts();
         _c.Refresh();
-        _c.SetCalendarShown(CalShow.IsChecked == true);
-        if (lcChanged)
-        {
-            _c.Tools?.ApplyLocalClaude();
-            if (_c.Tools?.LocalClaudeError is { Length: > 0 } lcErr) { ShowLocalClaude(); SaveHint.Text = L.T("本机 Claude 服务没开起来") + "：" + lcErr; NavAi.IsChecked = true; return false; }
-        }
-        _c.Tools?.RefreshCalendar();
-        if (_c.Tools?.ApplyHotkeys() is { Count: > 0 } bad)
-        {
-            SaveHint.Text = string.Join("；", bad.Select(kv => L.F("{0}快捷键{1}", ToolHub.Actions.First(a => a.Key == kv.Key).Name, kv.Value)));
-            NavKeys.IsChecked = true;
-            BuildKeys();
-            return false;
-        }
-        if (langChanged && !_c.Sandbox &&
+        foreach (var (page, part) in _parts)
+            if (part.Applied() is { } err) { SaveHint.Text = err; ShowPage(page); return false; }
+
+        if (_general.LangChanged && !_c.Sandbox &&
             MessageBox.Show(this, L.T("界面语言改好了，重启本工具后生效。现在重启吗？"), L.T("设置"), MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             Dispatcher.BeginInvoke(() => ((App)Application.Current).Restart());
         return true;
     }
-
-    // ---------------- 快捷键 ----------------
-    readonly Dictionary<string, string> _keySpecs = new();
-
-    static string Show(string spec) => spec.Length == 0 ? L.T("未设置") : spec == Interop.Hotkeys.DoubleCtrl ? L.T("连按两下 Ctrl") : spec.Replace("+", " + ");
-
-    void BuildKeys()
-    {
-        KeyRows.Children.Clear();
-        var tools = _c.Tools;
-        foreach (var a in ToolHub.Actions)
-        {
-            var key = a.Key;
-            if (!_keySpecs.ContainsKey(key)) _keySpecs[key] = tools?.HotkeyOf(key) ?? a.Default;
-            var box = new TextBox
-            {
-                Width = 200, Height = 30, IsReadOnly = true, IsReadOnlyCaretVisible = false, Cursor = Cursors.Hand,
-                Style = Res<Style>("WinTextBox"), TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
-                Text = Show(_keySpecs[key]), ToolTip = L.T("点一下，然后按下新的组合键"),
-            };
-            var status = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-            var dbl = new CheckBox { Content = L.T("连按两下 Ctrl"), Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = key == "search" ? Visibility.Visible : Visibility.Collapsed, IsChecked = _keySpecs[key] == Interop.Hotkeys.DoubleCtrl };
-            var reset = new Button { Content = L.T("恢复默认"), Style = Res<Style>("BtnW"), Margin = new Thickness(10, 0, 0, 0), Visibility = a.Default.Length == 0 ? Visibility.Collapsed : Visibility.Visible };
-
-            void Set(string spec)
-            {
-                _keySpecs[key] = spec;
-                box.Text = Show(spec);
-                dbl.IsChecked = spec == Interop.Hotkeys.DoubleCtrl;
-                box.IsEnabled = dbl.IsChecked != true;
-                Check(key, spec, status);
-            }
-
-            box.GotKeyboardFocus += (_, _) => { tools?.SuspendHotkeys(); box.Text = L.T("请按下组合键…"); };
-            box.LostKeyboardFocus += (_, _) => { box.Text = Show(_keySpecs[key]); tools?.ApplyHotkeys(); };
-            box.PreviewKeyDown += (_, e) =>
-            {
-                e.Handled = true;
-                var k = e.Key == Key.System ? e.SystemKey : e.Key;
-                if (k is Key.Back or Key.Delete) { Set(""); Keyboard.ClearFocus(); return; }
-                if (k == Key.Escape) { Keyboard.ClearFocus(); return; }
-                if (k == Key.Tab) { e.Handled = false; return; }
-                var spec = Interop.Hotkeys.Describe(Keyboard.Modifiers, k);
-                if (spec == null)
-                {
-                    // 只按了修饰键：先显示着，等按下主键
-                    if (Keyboard.Modifiers != ModifierKeys.None) box.Text = Show(Interop.Hotkeys.Describe(Keyboard.Modifiers, Key.F24)![..^4]) + " + …";
-                    else { status.Text = L.T("单个按键会影响打字，请加上 Ctrl / Alt / Shift / Win"); status.Foreground = Brush("#E47600"); }
-                    return;
-                }
-                Set(spec);
-                Keyboard.ClearFocus();
-            };
-            dbl.Click += (_, _) => Set(dbl.IsChecked == true ? Interop.Hotkeys.DoubleCtrl : a.Default == Interop.Hotkeys.DoubleCtrl ? "" : a.Default);
-            reset.Click += (_, _) => Set(a.Default);
-            box.IsEnabled = dbl.IsChecked != true;
-            Check(key, _keySpecs[key], status);
-
-            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 0) };
-            row.Children.Add(new TextBlock { Text = a.Name, Width = 90, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
-            row.Children.Add(box);
-            row.Children.Add(dbl);
-            row.Children.Add(reset);
-            row.Children.Add(status);
-            KeyRows.Children.Add(new Border { BorderBrush = Brush("#F0F0F0"), BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 8, 0, 8), Child = row });
-        }
-    }
-
-    /// <summary>冲突检查：和本工具其他功能重复，或者被别的程序占用。</summary>
-    void Check(string key, string spec, TextBlock status)
-    {
-        status.Text = "";
-        if (spec.Length == 0) return;
-        var dup = ToolHub.Actions.FirstOrDefault(a => a.Key != key && _keySpecs.GetValueOrDefault(a.Key) == spec);
-        if (dup.Key != null) { status.Text = L.F("和“{0}”重复了", dup.Name); status.Foreground = Brush("#E5413C"); return; }
-        var tools = _c.Tools;
-        if (tools == null) return;
-        if (tools.HotkeyErrors.TryGetValue(key, out var err) && spec == tools.HotkeyOf(key)) { status.Text = err; status.Foreground = Brush("#E5413C"); return; }
-        // 本工具自己正在用的组合不算冲突
-        bool ours = ToolHub.Actions.Any(a => tools.HotkeyOf(a.Key) == spec && !tools.HotkeyErrors.ContainsKey(a.Key));
-        if (tools.Keys is { } hk && !ours && !hk.IsFree(spec)) { status.Text = L.T("已被别的程序占用，换一个"); status.Foreground = Brush("#E5413C"); return; }
-        status.Text = L.T("✓ 可以用"); status.Foreground = Brush("#07C255");
-    }
-
-    async Task ShowIndexInfo()
-    {
-        IndexInfo.Text = L.T("文件查找：正在读取索引状态…");
-        var r = await Search.IndexerHost.QueryAsync(new Search.QueryRequest { Q = "", Max = 0 }, CancellationToken.None);
-        IndexInfo.Text = r == null ? L.T("文件查找：索引程序还没启动（第一次查找时会自动启动）")
-            : !r.Ready ? L.T("文件查找：正在建立全盘索引…")
-            : L.F("文件查找：已索引 {0:N0} 个文件，实时更新。索引程序单独运行，不需要管理员权限，不联网。", r.Indexed);
-    }
-
-    static List<string> Split(string s) =>
-        s.Split(new[] { ',', '，', '、', ';', '；', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-         .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-    static bool IsAutoStart()
-    {
-        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey);
-        return k?.GetValue(RunName) is string;
-    }
-
-    static void SetAutoStart(bool on)
-    {
-        using var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKey);
-        if (on) k.SetValue(RunName, $"\"{Environment.ProcessPath}\"");
-        else k.DeleteValue(RunName, false);
-    }
-
-    static T Res<T>(string key) => (T)Application.Current.FindResource(key);
-    static SolidColorBrush Brush(string hex) => new((Color)ColorConverter.ConvertFromString(hex));
 }

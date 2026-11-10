@@ -4,16 +4,16 @@ using System.Windows;
 namespace DeskHub.Core;
 
 /// <summary>
-/// 专用版 HOTA DESK（公司内部用，单独的仓库）和本程序可以同时装，但不能同时开：两个都会接管桌面（隐藏系统图标、画分区），全局快捷键也会互相抢。
-/// 本程序启动时如果 HOTA DESK 正开着，问用户要不要关掉它、改开本程序。专用版那边有对称的一份（Biz/OtherEdition.cs）。
+/// 两个版本（标识见 Edition.cs 的 Brand 和 Brand.Other）可以同时装，但不能同时开：两个都会接管桌面（隐藏系统图标、画分区），全局快捷键也会互相抢。
+/// 本程序启动时如果另一个版本正开着，问用户要不要关掉它、改开本程序。
 /// </summary>
 static class OtherEdition
 {
-    const string Name = "New B Desk";
-    const string OtherName = "HOTA DESK";
+    const string Name = Brand.Name;
+    const string OtherName = Brand.Other.Name;
 
     /// <summary>返回 false 表示不启动（用户不让关，或者关不掉）。</summary>
-    public static bool MakeWay() => MakeWay(@"Local\HotaDesk.Single", @"Local\HotaDesk.Exit", "HotaDesk", ask: true);
+    public static bool MakeWay() => MakeWay(Brand.Other.SingleMutex, Brand.Other.ExitSignal, Brand.Other.Process, ask: true);
 
     /// <summary>ask = false 是测试用（沙盒脚本 edition）：换成测试用的名字，不弹窗，当作用户点了“是”。</summary>
     internal static bool MakeWay(string mutex, string exitSignal, string? process, bool ask)

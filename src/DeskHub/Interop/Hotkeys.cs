@@ -39,7 +39,7 @@ public sealed class Hotkeys : IDisposable
     public Hotkeys()
     {
         // 只收消息、不显示的窗口
-        _wnd = new HwndSource(new HwndSourceParameters("DeskHub.Hotkeys") { ParentWindow = new IntPtr(-3), WindowStyle = 0 });
+        _wnd = new HwndSource(new HwndSourceParameters(Brand.Id + ".Hotkeys") { ParentWindow = new IntPtr(-3), WindowStyle = 0 });
         _wnd.AddHook(Hook);
     }
 

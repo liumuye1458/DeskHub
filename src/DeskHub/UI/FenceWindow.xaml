@@ -77,6 +77,20 @@
               </ControlTemplate>
             </Button.Template>
           </Button>
+          <!-- 版本自己加的按钮（Edition.Fences 里的 Button），默认没有 -->
+          <Button x:Name="ExtraBtn" DockPanel.Dock="Right" Width="28" Height="28" Cursor="Hand" Focusable="False" Visibility="Collapsed">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="b" Background="Transparent" CornerRadius="14">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource SoftOn}"/></Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+            <TextBlock x:Name="ExtraIcon" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Emoji, Segoe UI" FontSize="13" Foreground="White" Opacity="0.85"/>
+          </Button>
           <TextBlock x:Name="HintText" DockPanel.Dock="Right" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,4,0" TextTrimming="CharacterEllipsis"/>
           <Grid>
             <StackPanel x:Name="TitlePanel" Orientation="Horizontal" VerticalAlignment="Center">
@@ -116,7 +130,10 @@
       </Border>
 
       <!-- 事项标签页（只有"进行中"有）：圆角小药丸 -->
-      <ItemsControl x:Name="Tabs" Grid.Row="1" Margin="10,0,10,0" Visibility="Collapsed">
+      <!-- 标题下面一直显示的一行说明（Edition.Fences 里的 Note），默认没有 -->
+      <StackPanel Grid.Row="1">
+      <TextBlock x:Name="NoteText" Margin="14,0,14,4" Foreground="{StaticResource TextHint}" Effect="{StaticResource TextShadowSoft}" FontSize="11.5" TextWrapping="Wrap" Visibility="Collapsed"/>
+      <ItemsControl x:Name="Tabs" Margin="10,0,10,0" Visibility="Collapsed">
         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
@@ -140,6 +157,7 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+      </StackPanel>
 
       <!-- 类型筛选 -->
       <ItemsControl x:Name="Chips" Grid.Row="2" Margin="12,4,12,0" Visibility="Collapsed">

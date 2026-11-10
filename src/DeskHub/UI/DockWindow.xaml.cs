@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using DeskHub.Core;
 using DeskHub.Interop;
 
 namespace DeskHub.UI;
@@ -67,8 +68,8 @@ public partial class DockWindow : Window
         LocationChanged += (_, _) => { if (!Collapsed) UpdateGlyphs(); };
     }
 
-    /// <summary>加一个按钮。icon 是 20×20 的线条图标路径。</summary>
-    public void Add(string text, string icon, string tip, Action run)
+    /// <summary>加一个按钮。key 是按钮的键名（改说明文字时用），icon 是 20×20 的线条图标路径。</summary>
+    public void Add(string key, string text, string icon, string tip, Action run)
     {
         var path = new Path
         {
@@ -78,15 +79,120 @@ public partial class DockWindow : Window
         var panel = new StackPanel();
         panel.Children.Add(path);
         panel.Children.Add(new TextBlock { Text = text, Margin = new Thickness(0, 5, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, Effect = (System.Windows.Media.Effects.Effect)FindResource("TextShadow") });
-        var btn = new Button { Content = panel, Style = (Style)FindResource("DockBtn"), ToolTip = tip };
+        var btn = new Button { Content = panel, Style = (Style)FindResource("DockBtn"), ToolTip = tip, Tag = key };
         btn.Click += (_, _) => { if (!_dragged) run(); };
         Buttons.Children.Add(btn);
     }
 
-    public void SetTip(string text, string tip)
+    /// <summary>加一个软件按钮（用户拖上来的快捷方式）：图标是那个软件的图标，右键能拿掉。</summary>
+    public void AddApp(string key, string text, string iconPath, string tip, Action run, Action remove)
+    {
+        var img = new Image { Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Center };
+        _ = LoadIcon(img, iconPath);
+        var panel = new StackPanel();
+        panel.Children.Add(img);
+        panel.Children.Add(new TextBlock
+        {
+            Text = text, MaxWidth = 64, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 5, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center, Effect = (System.Windows.Media.Effects.Effect)FindResource("TextShadow"),
+        });
+        var btn = new Button { Content = panel, Style = (Style)FindResource("DockBtn"), ToolTip = tip, Tag = key };
+        btn.Click += (_, _) => { if (!_dragged) run(); };
+        var menu = new ContextMenu();
+        var rm = new MenuItem { Header = L.T("从工具条拿掉") };
+        rm.Click += (_, _) => remove();
+        menu.Items.Add(rm);
+        btn.ContextMenu = menu;
+        Buttons.Children.Add(btn);
+    }
+
+    static async Task LoadIcon(Image img, string path)
+    {
+        try { img.Source = await ShellIcons.GetAsync(path, System.IO.File.GetLastWriteTime(path), 32, false); } catch { }
+    }
+
+    /// <summary>拿掉一个按钮。</summary>
+    public void Remove(string key)
+    {
+        foreach (var b in Buttons.Children.OfType<Button>().Where(b => b.Tag as string == key).ToList()) Buttons.Children.Remove(b);
+    }
+
+    /// <summary>允许把快捷方式 / 程序拖到工具条上（Edition.DockAcceptsShortcuts）。</summary>
+    public void AcceptShortcuts(Action<string[]> dropped)
+    {
+        AllowDrop = true;
+        static string[] Files(DragEventArgs e) =>
+            e.Data.GetData(DataFormats.FileDrop) is string[] a
+                ? a.Where(p => System.IO.Path.GetExtension(p).ToLowerInvariant() is ".lnk" or ".exe" or ".url" or ".appref-ms").ToArray()
+                : Array.Empty<string>();
+        DragOver += (_, e) => { e.Effects = Files(e).Length > 0 ? DragDropEffects.Link : DragDropEffects.None; e.Handled = true; };
+        Drop += (_, e) => { var f = Files(e); if (f.Length > 0) dropped(f); e.Handled = true; };
+    }
+
+    /// <summary>
+    /// 可选（Edition）：noActivate 点了不抢别的窗口的焦点；excludeCapture 截图、录屏、共享屏幕时看不见它
+    /// （要 Windows 10 2004 以上，旧系统直接跳过）。要在窗口显示前调用。
+    /// </summary>
+    public void SetOptions(bool noActivate, bool excludeCapture)
+    {
+        SourceInitialized += (_, _) =>
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (noActivate)
+            {
+                var ex = (long)Native.GetWindowLongPtr(h, Native.GWL_EXSTYLE);
+                Native.SetWindowLongPtr(h, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_NOACTIVATE));
+            }
+            if (excludeCapture && Environment.OSVersion.Version.Build >= 19041)
+                SetWindowDisplayAffinity(h, 0x11 /*WDA_EXCLUDEFROMCAPTURE*/);
+        };
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetWindowDisplayAffinity(IntPtr h, uint affinity);
+
+    /// <summary>工具条旁边一句轻提示：不弹窗、不抢焦点、点不到，几秒后自己消失。</summary>
+    public void ShowHint(string text)
+    {
+        _hint?.Close();
+        var tb = new TextBlock { Text = text, Foreground = Brushes.White, FontSize = 12.5, TextWrapping = TextWrapping.Wrap, MaxWidth = 360 };
+        var w = new Window
+        {
+            WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = false,
+            ShowActivated = false, Focusable = false, IsHitTestVisible = false, Topmost = true, ResizeMode = ResizeMode.NoResize,
+            SizeToContent = SizeToContent.WidthAndHeight, FontFamily = FontFamily,
+            Content = new Border { Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x20, 0x20, 0x20)), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 7, 12, 7), Child = tb },
+        };
+        w.SourceInitialized += (_, _) =>
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+            var ex = (long)Native.GetWindowLongPtr(h, Native.GWL_EXSTYLE);
+            Native.SetWindowLongPtr(h, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW | Native.WS_EX_TRANSPARENT));
+        };
+        w.Loaded += (_, _) =>
+        {
+            // 放在工具条正上方，靠右对齐；上面放不下就放下面
+            var wa = WorkArea();
+            double x = Math.Clamp(Left + ActualWidth - w.ActualWidth, wa.Left, wa.Right - w.ActualWidth);
+            double y = Top - w.ActualHeight - 6;
+            if (y < wa.Top) y = Top + ActualHeight + 6;
+            w.Left = x; w.Top = y;
+        };
+        _hint = w;
+        w.Show();
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        t.Tick += (_, _) => { t.Stop(); w.Close(); if (_hint == w) _hint = null; };
+        t.Start();
+    }
+
+    Window? _hint;
+
+    /// <summary>测试用：现在显示的轻提示（没有为 null）。</summary>
+    public string? HintShown => (_hint?.Content as Border)?.Child is TextBlock tb ? tb.Text : null;
+
+    public void SetTip(string key, string tip)
     {
         foreach (Button b in Buttons.Children)
-            if (b.Content is StackPanel { Children: [_, TextBlock t] } && t.Text == text) b.ToolTip = tip;
+            if (b.Tag as string == key) b.ToolTip = tip;
     }
 
     /// <summary>测试用：模拟拖到 (x, y) 松手。</summary>

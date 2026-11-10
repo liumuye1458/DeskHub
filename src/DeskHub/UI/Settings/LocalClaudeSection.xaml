@@ -1,0 +1,25 @@
+<UserControl x:Class="DeskHub.UI.Settings.LocalClaudeSection"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- 本机 Claude 小服务（编译开关 FeatLocalClaude） -->
+  <StackPanel>
+    <TextBlock x:Name="LcTitle" FontSize="13" FontWeight="Bold" Foreground="#222" Margin="0,22,0,4">本机 Claude</TextBlock>
+    <TextBlock Foreground="#666" FontSize="12.5" TextWrapping="Wrap" LineHeight="20" Text="用这台电脑上已经登录的 Claude（claude 命令行）来识别，不用另买密钥。打开后本工具在本机开一个小服务，只有这台电脑上的程序连得上；自家别的程序也可以接它。"/>
+    <CheckBox x:Name="LcOn" Style="{StaticResource Toggle}" Margin="0,10,0,4" Content="打开本机 Claude 服务"/>
+    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+      <TextBlock Text="端口" Width="70" VerticalAlignment="Center"/>
+      <TextBox x:Name="LcPort" Width="90" Height="28" VerticalContentAlignment="Center" Style="{StaticResource WinTextBox}"/>
+      <TextBlock Foreground="#999" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" Text="只听 127.0.0.1，别的电脑连不上"/>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+      <TextBlock Text="口令" Width="70" VerticalAlignment="Center"/>
+      <PasswordBox x:Name="LcToken" Width="300" Height="28" VerticalContentAlignment="Center" Padding="6,0"/>
+    </StackPanel>
+    <TextBlock Foreground="#999" FontSize="12" Margin="70,4,0,0" TextWrapping="Wrap" Text="自己定一串字，程序来问时要带上它。加密保存在本机。"/>
+    <StackPanel Orientation="Horizontal" Margin="70,10,0,0">
+      <Button x:Name="LcUse" Content="日历识别改用本机 Claude" Style="{StaticResource BtnW}" Margin="0,0,10,0"/>
+      <Button x:Name="LcDoc" Content="接口说明" Style="{StaticResource BtnW}"/>
+    </StackPanel>
+    <TextBlock x:Name="LcHint" Foreground="#999" FontSize="12" Margin="70,6,0,0" TextWrapping="Wrap"/>
+  </StackPanel>
+</UserControl>
